@@ -107,12 +107,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
       </div>
-
-      {/* Public MVP Badge */}
-      <div className="mt-6 p-3 rounded-xl bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-        <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-        <span>Public MVP Mode (No Login Required)</span>
-      </div>
     </aside>
   );
 };

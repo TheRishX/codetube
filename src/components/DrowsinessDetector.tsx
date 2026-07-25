@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Eye, EyeOff, AlertTriangle, Bell, Volume2, ShieldCheck, Camera, Power, RefreshCw, X, Play } from 'lucide-react';
+import { Eye, EyeOff, AlertTriangle, Bell, ShieldCheck, Camera, Power, UserX, Sparkles, RefreshCw, Volume2 } from 'lucide-react';
+import * as faceapi from '@vladmandic/face-api';
 
 interface DrowsinessDetectorProps {
   onAlertTriggered?: () => void;
@@ -13,8 +14,12 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
   const [closedSecCounter, setClosedSecCounter] = useState<number>(0);
   const [isAlerting, setIsAlerting] = useState<boolean>(false);
   const [totalAlertsCount, setTotalAlertsCount] = useState<number>(0);
-  const [eyeState, setEyeState] = useState<'open' | 'closed' | 'no-face'>('open');
+
+  // States: 'open' | 'closed' | 'no-face'
+  const [detectionState, setDetectionState] = useState<'open' | 'closed' | 'no-face'>('open');
   const [eyeOpenPercentage, setEyeOpenPercentage] = useState<number>(95);
+  const [useSnapshotMode, setUseSnapshotMode] = useState<boolean>(true); // Smart Snapshot Interval Mode to save battery/CPU
+  const [faceApiLoaded, setFaceApiLoaded] = useState<boolean>(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,8 +27,22 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sirenOsc1Ref = useRef<OscillatorNode | null>(null);
   const sirenOsc2Ref = useRef<OscillatorNode | null>(null);
-  const alertIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastLuminanceRef = useRef<number[]>([]);
+
+  // Load FaceAPI models gracefully if available
+  useEffect(() => {
+    let isMounted = true;
+    const loadModels = async () => {
+      try {
+        await faceapi.nets.tinyFaceDetector.loadFromUri('https://vladmandic.github.io/face-api/model');
+        if (isMounted) setFaceApiLoaded(true);
+      } catch (err) {
+        console.warn('FaceAPI remote weights unavailable, fallback to hybrid vision engine:', err);
+      }
+    };
+    loadModels();
+    return () => { isMounted = false; };
+  }, []);
 
   // Web Audio Siren Generator for Maximum Volume Alarm
   const startLoudAlarmSound = useCallback(() => {
@@ -47,7 +66,7 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
       }
 
       const gainNode = ctx.createGain();
-      gainNode.gain.value = 1.0; // Maximum volume
+      gainNode.gain.value = 1.0; // Maximum volume (100%)
       gainNode.connect(ctx.destination);
 
       // Create dual modulating siren oscillators
@@ -62,7 +81,7 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
       osc1.frequency.setValueAtTime(880, now);
       osc2.frequency.setValueAtTime(1320, now);
 
-      for (let i = 0; i < 60; i += 0.3) {
+      for (let i = 0; i < 120; i += 0.3) {
         osc1.frequency.setValueAtTime(1760, now + i);
         osc1.frequency.setValueAtTime(880, now + i + 0.15);
         osc2.frequency.setValueAtTime(1320, now + i);
@@ -100,13 +119,9 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    if (alertIntervalRef.current) {
-      clearInterval(alertIntervalRef.current);
-      alertIntervalRef.current = null;
-    }
     setIsActive(false);
     setClosedSecCounter(0);
-    setEyeState('open');
+    setDetectionState('open');
   }, []);
 
   // Start webcam
@@ -128,11 +143,13 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
     }
   };
 
-  // Frame processing loop to detect eye closure / drowsiness
+  // Smart Frame processing loop (Smart Snapshot interval e.g. 1.2s or 0.8s)
   useEffect(() => {
     if (!isActive) return;
 
-    const interval = setInterval(() => {
+    const sampleIntervalMs = useSnapshotMode ? 1200 : 500;
+
+    const interval = setInterval(async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
@@ -145,13 +162,35 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
       canvas.height = 120;
       ctx.drawImage(video, 0, 0, 160, 120);
 
-      // Analyze upper face / eye region luminosity & variance
-      const frameData = ctx.getImageData(30, 25, 100, 45); // Approximate eye/upper face region
+      let isFacePresent = false;
+      let isEyesClosed = false;
+
+      // 1. Try face-api detection if models loaded
+      if (faceApiLoaded) {
+        try {
+          const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 128, scoreThreshold: 0.4 }));
+          if (detection) {
+            isFacePresent = true;
+          }
+        } catch (e) {
+          // Fallback
+        }
+      }
+
+      // 2. Fallback/Hybrid computer vision pixel analysis
+      const frameData = ctx.getImageData(0, 0, 160, 120);
       const pixels = frameData.data;
 
+      let skinLikePixels = 0;
       let totalBrightness = 0;
-      let totalVariance = 0;
-      const count = pixels.length / 4;
+      let eyeRegionBrightness = 0;
+      let eyeRegionVariance = 0;
+
+      const totalPixels = pixels.length / 4;
+
+      // Eye upper region slice
+      const eyePixelsSlice = ctx.getImageData(30, 25, 100, 40).data;
+      const eyeCount = eyePixelsSlice.length / 4;
 
       for (let i = 0; i < pixels.length; i += 4) {
         const r = pixels[i];
@@ -159,34 +198,55 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
         const b = pixels[i + 2];
         const avg = (r + g + b) / 3;
         totalBrightness += avg;
+
+        // Basic YCbCr / RGB skin tone presence heuristic
+        if (r > 60 && g > 35 && b > 20 && r > g && r > b && Math.abs(r - g) > 10) {
+          skinLikePixels++;
+        }
       }
 
-      const meanBrightness = totalBrightness / count;
+      for (let i = 0; i < eyePixelsSlice.length; i += 4) {
+        const avg = (eyePixelsSlice[i] + eyePixelsSlice[i + 1] + eyePixelsSlice[i + 2]) / 3;
+        eyeRegionBrightness += avg;
+      }
+      const meanEyeBrightness = eyeRegionBrightness / eyeCount;
 
-      for (let i = 0; i < pixels.length; i += 4) {
-        const avg = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-        totalVariance += Math.pow(avg - meanBrightness, 2);
+      for (let i = 0; i < eyePixelsSlice.length; i += 4) {
+        const avg = (eyePixelsSlice[i] + eyePixelsSlice[i + 1] + eyePixelsSlice[i + 2]) / 3;
+        eyeRegionVariance += Math.pow(avg - meanEyeBrightness, 2);
+      }
+      const stdDev = Math.sqrt(eyeRegionVariance / eyeCount);
+
+      // Check face presence based on skin pixel coverage (> 4% of frame) or FaceAPI
+      const skinRatio = skinLikePixels / totalPixels;
+      if (!isFacePresent && skinRatio > 0.04) {
+        isFacePresent = true;
       }
 
-      const stdDev = Math.sqrt(totalVariance / count);
-
-      // Keep recent luminance history
-      lastLuminanceRef.current.push(stdDev);
-      if (lastLuminanceRef.current.length > 10) {
-        lastLuminanceRef.current.shift();
+      // Check eyes closed condition
+      if (isFacePresent) {
+        isEyesClosed = stdDev < 14 || meanEyeBrightness < 20;
       }
 
-      // Determine eye state based on contrast/stdDev variation (closed eyes drop high-frequency edge contrast in eye area)
-      const avgRecentDev = lastLuminanceRef.current.reduce((a, b) => a + b, 0) / (lastLuminanceRef.current.length || 1);
-
-      // If contrast is very low or dark or static, eyes are estimated to be closed / head down
-      const isClosed = stdDev < 14 || meanBrightness < 20;
-
-      if (isClosed) {
-        setEyeState('closed');
+      // Determine state logic
+      if (!isFacePresent) {
+        setDetectionState('no-face');
+        setEyeOpenPercentage(0);
+        setClosedSecCounter((prev) => {
+          const next = prev + Math.round(sampleIntervalMs / 1000);
+          if (next >= alertThresholdSec && !isAlerting) {
+            setIsAlerting(true);
+            setTotalAlertsCount((c) => c + 1);
+            startLoudAlarmSound();
+            if (onAlertTriggered) onAlertTriggered();
+          }
+          return next;
+        });
+      } else if (isEyesClosed) {
+        setDetectionState('closed');
         setEyeOpenPercentage((prev) => Math.max(10, prev - 15));
         setClosedSecCounter((prev) => {
-          const next = prev + 1;
+          const next = prev + Math.round(sampleIntervalMs / 1000);
           if (next >= alertThresholdSec && !isAlerting) {
             setIsAlerting(true);
             setTotalAlertsCount((c) => c + 1);
@@ -196,14 +256,14 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
           return next;
         });
       } else {
-        setEyeState('open');
+        setDetectionState('open');
         setEyeOpenPercentage((prev) => Math.min(100, prev + 20));
         setClosedSecCounter((prev) => Math.max(0, prev - 1));
       }
-    }, 1000);
+    }, sampleIntervalMs);
 
     return () => clearInterval(interval);
-  }, [isActive, alertThresholdSec, isAlerting, startLoudAlarmSound, onAlertTriggered]);
+  }, [isActive, alertThresholdSec, isAlerting, useSnapshotMode, faceApiLoaded, startLoudAlarmSound, onAlertTriggered]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -227,14 +287,14 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2.5">
           <div className={`p-2.5 rounded-2xl ${isActive ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}>
             <Eye className="w-5 h-5" />
           </div>
           <div>
             <h3 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
-              Sleep & Drowsiness AI Guard
+              Sleep & Face Presence AI Guard
               {isActive && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
@@ -243,7 +303,7 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
               )}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Webcam monitors closed eyes & plays loud alarm if sleeping
+              Monitors eye closure & screen presence. Plays loud alarm if sleeping or absent &gt; 60s
             </p>
           </div>
         </div>
@@ -284,7 +344,7 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
                 className="w-full h-full object-cover transform scale-x-[-1]"
               />
               <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-bold text-white flex items-center gap-1">
-                <Camera className="w-3 h-3 text-emerald-400" /> Live AI Vision
+                <Camera className="w-3 h-3 text-emerald-400" /> {useSnapshotMode ? 'Smart Snapshot' : 'Live Stream'}
               </div>
             </div>
 
@@ -292,16 +352,30 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
             <div className="p-3.5 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
               <div>
                 <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-                  Eye State Monitor
+                  AI Presence & Eye State
                 </span>
                 <div className="flex items-center gap-2">
-                  {eyeState === 'closed' ? (
+                  {detectionState === 'no-face' ? (
+                    <UserX className="w-5 h-5 text-amber-500 animate-bounce" />
+                  ) : detectionState === 'closed' ? (
                     <EyeOff className="w-5 h-5 text-rose-500 animate-pulse" />
                   ) : (
                     <Eye className="w-5 h-5 text-emerald-500" />
                   )}
-                  <span className={`text-sm font-black ${eyeState === 'closed' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                    {eyeState === 'closed' ? 'Eyes Closed / Resting' : 'Eyes Open & Focused'}
+                  <span
+                    className={`text-sm font-black ${
+                      detectionState === 'no-face'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : detectionState === 'closed'
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
+                    {detectionState === 'no-face'
+                      ? 'Not Visible on Screen'
+                      : detectionState === 'closed'
+                      ? 'Eyes Closed / Resting'
+                      : 'Focused & Present'}
                   </span>
                 </div>
               </div>
@@ -326,7 +400,7 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
             <div className="p-3.5 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
               <div>
                 <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-                  Sleep Duration Trigger
+                  Absence / Sleep Counter
                 </span>
                 <div className="text-xl font-extrabold text-gray-900 dark:text-white flex items-baseline gap-1">
                   <span>{closedSecCounter}s</span>
@@ -335,26 +409,38 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
               </div>
 
               <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <span>Drowsiness Alerts Today:</span>
+                <span>Drowsiness Alerts Triggered:</span>
                 <span className="font-bold text-rose-600 dark:text-rose-400">{totalAlertsCount}</span>
               </div>
             </div>
           </div>
 
-          {/* Settings & Testing Controls */}
+          {/* Settings & Controls */}
           <div className="pt-2 border-t border-gray-100 dark:border-gray-700/80 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-              <span className="font-semibold">Alarm Threshold:</span>
-              <select
-                value={alertThresholdSec}
-                onChange={(e) => setAlertThresholdSec(Number(e.target.value))}
-                className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-xs font-bold text-gray-900 dark:text-white outline-hidden"
-              >
-                <option value={5}>5 seconds (Quick Live Test)</option>
-                <option value={15}>15 seconds</option>
-                <option value={30}>30 seconds</option>
-                <option value={60}>60 seconds (1 Minute)</option>
-              </select>
+            <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Alarm Limit:</span>
+                <select
+                  value={alertThresholdSec}
+                  onChange={(e) => setAlertThresholdSec(Number(e.target.value))}
+                  className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-xs font-bold text-gray-900 dark:text-white outline-hidden"
+                >
+                  <option value={5}>5 seconds (Quick Test)</option>
+                  <option value={15}>15 seconds</option>
+                  <option value={30}>30 seconds</option>
+                  <option value={60}>60 seconds (1 Minute)</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={useSnapshotMode}
+                  onChange={(e) => setUseSnapshotMode(e.target.checked)}
+                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="font-semibold">Smart Snapshot Mode (Energy Saver)</span>
+              </label>
             </div>
 
             <div className="flex items-center gap-2">
@@ -377,10 +463,10 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
             </div>
             <div>
               <p className="text-xs font-bold text-gray-900 dark:text-white">
-                Stay Awake & Alert During Long Video Lectures
+                Stay Awake & Present During Study Sessions
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Turn on the camera guard to automatically trigger a loud audio siren if your eyes remain closed for over 1 minute.
+                Turn on the camera guard to automatically trigger a loud audio siren if eyes are closed or you leave the screen for &gt; 60s.
               </p>
             </div>
           </div>
@@ -389,7 +475,7 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
             onClick={startCamera}
             className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 shrink-0 transition-all"
           >
-            Enable Camera Guard
+            Enable AI Camera Guard
           </button>
         </div>
       )}
@@ -407,10 +493,12 @@ export const DrowsinessDetector: React.FC<DrowsinessDetectorProps> = ({ onAlertT
                 WAKE UP! SLEEP DETECTED!
               </h2>
               <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mt-2">
-                Your eyes were detected closed for over {alertThresholdSec} seconds!
+                {detectionState === 'no-face'
+                  ? `You have been away from the screen for over ${alertThresholdSec} seconds!`
+                  : `Your eyes were detected closed for over ${alertThresholdSec} seconds!`}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Loud alarm playing at full volume to wake you up for your study session.
+                Full-volume audio alarm playing to keep you alert.
               </p>
             </div>
 

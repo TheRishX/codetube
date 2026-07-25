@@ -1,8 +1,51 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { CheckCircle2, RotateCcw, Maximize2, Volume2, VolumeX, FastForward, Focus } from 'lucide-react';
+import { CheckCircle2, Focus } from 'lucide-react';
 import { VideoItem, VideoProgress } from '../types';
-import { formatDuration } from '../lib/youtube';
 import { updateVideoInFirestore } from '../lib/firebase';
+
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+  }
+}
+
+// Global script loader for YouTube Iframe API
+let ytApiPromise: Promise<any> | null = null;
+const loadYouTubeIframeApi = (): Promise<any> => {
+  if (ytApiPromise) return ytApiPromise;
+
+  ytApiPromise = new Promise((resolve) => {
+    if (window.YT && window.YT.Player) {
+      resolve(window.YT);
+      return;
+    }
+
+    const existingScript = document.getElementById('youtube-iframe-api-script');
+    if (!existingScript) {
+      const tag = document.createElement('script');
+      tag.id = 'youtube-iframe-api-script';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+    }
+
+    const previousReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (previousReady) previousReady();
+      resolve(window.YT);
+    };
+
+    const interval = setInterval(() => {
+      if (window.YT && window.YT.Player) {
+        clearInterval(interval);
+        resolve(window.YT);
+      }
+    }, 100);
+  });
+
+  return ytApiPromise;
+};
 
 interface VideoPlayerProps {
   video: VideoItem;
@@ -25,112 +68,167 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onGetCurrentTime,
   onSeekToReady,
 }) => {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<any>(null);
+
   const startSeconds = initialProgress?.watchedSeconds || 0;
 
   const [currentTime, setCurrentTime] = useState(startSeconds);
   const [isPlaying, setIsPlaying] = useState(false);
   const [pauseCount, setPauseCount] = useState<number>(initialProgress?.pausesCount || 0);
-  const prevIsPlayingRef = useRef<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
   const [realDuration, setRealDuration] = useState<number>(video.duration || 0);
 
-  // Setup iframe embed URL with YouTube Parameters for JS API control
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${video.youtubeId}?enablejsapi=1&start=${Math.floor(startSeconds)}&autoplay=0&rel=0&modestbranding=1`;
+  // Keep latest callbacks in refs to avoid stale closures inside YT event handlers
+  const onProgressUpdateRef = useRef(onProgressUpdate);
+  onProgressUpdateRef.current = onProgressUpdate;
 
-  // Track state transitions for pause detection
-  const handleStateUpdate = useCallback((playing: boolean) => {
-    if (prevIsPlayingRef.current && !playing) {
-      // Transition from playing -> paused
-      setPauseCount((prev) => {
-        const next = prev + 1;
-        onProgressUpdate(currentTime, realDuration || video.duration || 1800, next);
-        return next;
-      });
-    }
-    prevIsPlayingRef.current = playing;
-    setIsPlaying(playing);
-  }, [currentTime, realDuration, video.duration, onProgressUpdate]);
+  const onMarkCompletedRef = useRef(onMarkCompleted);
+  onMarkCompletedRef.current = onMarkCompleted;
 
-  // Function to send postMessage commands to YouTube iframe API
-  const sendIframeCommand = useCallback((command: string, args: any[] = []) => {
-    if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({
-          event: 'command',
-          func: command,
-          args: args,
-        }),
-        '*'
-      );
-    }
-  }, []);
+  const pauseCountRef = useRef(pauseCount);
+  pauseCountRef.current = pauseCount;
 
-  // Listen to YouTube Iframe postMessage events to sync play/pause & real duration
+  // Initialize YouTube YT.Player instance
   useEffect(() => {
-    const handleWindowMessage = (event: MessageEvent) => {
-      let data = event.data;
-      if (typeof data === 'string') {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          return;
-        }
-      }
-      if (!data || typeof data !== 'object') return;
+    let isMounted = true;
+    let pollInterval: NodeJS.Timeout | null = null;
+    const elementId = `yt-player-${video.id}`;
 
-      // Handle YouTube state change events (1 = PLAYING, 2 = PAUSED, 0 = ENDED, 3 = BUFFERING)
-      if (data.event === 'onStateChange') {
-        const state = data.info;
-        if (state === 1) handleStateUpdate(true);
-        else if (state === 2 || state === 0) handleStateUpdate(false);
-      }
+    loadYouTubeIframeApi().then((YT) => {
+      if (!isMounted || !containerRef.current) return;
 
-      // Handle infoDelivery from YouTube player
-      if (data.event === 'infoDelivery' && data.info) {
-        if (typeof data.info.playerState === 'number') {
-          const state = data.info.playerState;
-          if (state === 1) handleStateUpdate(true);
-          else if (state === 2 || state === 0) handleStateUpdate(false);
-        }
-        if (typeof data.info.currentTime === 'number' && data.info.currentTime > 0) {
-          setCurrentTime(data.info.currentTime);
-        }
-        if (typeof data.info.duration === 'number' && data.info.duration > 0) {
-          const dur = Math.round(data.info.duration);
-          setRealDuration(dur);
-          if (dur > 0 && dur !== video.duration) {
-            updateVideoInFirestore(video.id, { duration: dur }).catch((err) =>
-              console.error('Failed to update duration in Firestore:', err)
-            );
-            onProgressUpdate(currentTime, dur);
+      // Clean up container
+      containerRef.current.innerHTML = `<div id="${elementId}" class="w-full h-full"></div>`;
+
+      playerRef.current = new YT.Player(elementId, {
+        height: '100%',
+        width: '100%',
+        videoId: video.youtubeId,
+        playerVars: {
+          autoplay: 1,
+          start: Math.floor(startSeconds),
+          rel: 0,
+          modestbranding: 1,
+          enablejsapi: 1,
+        },
+        events: {
+          onReady: (event: any) => {
+            if (!isMounted) return;
+            const player = event.target;
+
+            // Fetch ground truth duration directly from YouTube Player
+            const dur = player.getDuration();
+            if (dur && dur > 0) {
+              setRealDuration(dur);
+              if (dur !== video.duration) {
+                updateVideoInFirestore(video.id, { duration: Math.round(dur) }).catch(() => {});
+              }
+            }
+
+            // Seek to exact last watched timestamp if present
+            if (startSeconds > 0) {
+              player.seekTo(startSeconds, true);
+            }
+          },
+          onStateChange: (event: any) => {
+            if (!isMounted) return;
+            const player = event.target;
+            const state = event.data;
+
+            // 1 = PLAYING
+            if (state === YT.PlayerState.PLAYING) {
+              setIsPlaying(true);
+              const cur = player.getCurrentTime() || 0;
+              const dur = player.getDuration() || video.duration || 0;
+              setCurrentTime(cur);
+              if (dur > 0) setRealDuration(dur);
+              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration);
+            }
+            // 2 = PAUSED
+            else if (state === YT.PlayerState.PAUSED) {
+              setIsPlaying(false);
+              const cur = player.getCurrentTime() || 0;
+              const dur = player.getDuration() || video.duration || 0;
+              setCurrentTime(cur);
+              const nextPauseCount = pauseCountRef.current + 1;
+              setPauseCount(nextPauseCount);
+              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration, nextPauseCount);
+            }
+            // 0 = ENDED
+            else if (state === YT.PlayerState.ENDED) {
+              setIsPlaying(false);
+              const dur = player.getDuration() || video.duration || 0;
+              setCurrentTime(dur);
+              onProgressUpdateRef.current(dur, dur);
+              onMarkCompletedRef.current();
+            }
+          },
+        },
+      });
+
+      // Polling loop to continuously get exact ground-truth time directly from YouTube player
+      pollInterval = setInterval(() => {
+        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+          try {
+            const state = playerRef.current.getPlayerState();
+            const playing = state === 1; // YT.PlayerState.PLAYING
+            setIsPlaying(playing);
+
+            const cur = playerRef.current.getCurrentTime();
+            const dur = playerRef.current.getDuration();
+
+            if (typeof cur === 'number' && !isNaN(cur)) {
+              setCurrentTime(cur);
+            }
+            if (typeof dur === 'number' && dur > 0 && !isNaN(dur)) {
+              setRealDuration(dur);
+            }
+
+            // Periodically auto-sync progress while video is actively playing
+            if (playing && typeof cur === 'number' && !isNaN(cur)) {
+              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration);
+            }
+          } catch {
+            // Player initializing or detached
           }
+        }
+      }, 500);
+    });
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+
+      // On component unmount, capture final exact ground-truth timestamp from YouTube player
+      if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+        try {
+          const cur = playerRef.current.getCurrentTime();
+          const dur = playerRef.current.getDuration();
+          if (typeof cur === 'number' && cur >= 0) {
+            onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration);
+          }
+          playerRef.current.destroy();
+        } catch {
+          // ignore destroy errors
         }
       }
     };
-
-    window.addEventListener('message', handleWindowMessage);
-    return () => window.removeEventListener('message', handleWindowMessage);
-  }, [video.duration, currentTime, onProgressUpdate]);
-
-  // Request player listening status periodically
-  useEffect(() => {
-    const timer = setInterval(() => {
-      sendIframeCommand('listening');
-      sendIframeCommand('getDuration');
-      sendIframeCommand('getCurrentTime');
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [sendIframeCommand]);
+  }, [video.id, video.youtubeId]);
 
   const effectiveDuration = realDuration > 0 ? realDuration : (video.duration || 0);
 
-  const handleSeek = useCallback((seconds: number) => {
-    setCurrentTime(seconds);
-    sendIframeCommand('seekTo', [seconds, true]);
-    onProgressUpdate(seconds, effectiveDuration);
-  }, [sendIframeCommand, onProgressUpdate, effectiveDuration]);
+  // Expose seek function to parent (Notes, Bookmarks, AI Chat)
+  const handleSeek = useCallback(
+    (seconds: number) => {
+      setCurrentTime(seconds);
+      if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
+        playerRef.current.seekTo(seconds, true);
+      }
+      onProgressUpdateRef.current(seconds, effectiveDuration);
+    },
+    [effectiveDuration]
+  );
 
   useEffect(() => {
     if (onSeekToReady) {
@@ -138,91 +236,106 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, [onSeekToReady, handleSeek]);
 
-  // Expose currentTime getter
+  // Expose currentTime getter to parent
   useEffect(() => {
     if (onGetCurrentTime) {
-      onGetCurrentTime(() => currentTime);
+      onGetCurrentTime(() => {
+        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+          try {
+            return playerRef.current.getCurrentTime() || currentTime;
+          } catch {
+            return currentTime;
+          }
+        }
+        return currentTime;
+      });
     }
   }, [currentTime, onGetCurrentTime]);
 
-  // Keyboard accessibility controls
+  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
-      const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || (activeEl as HTMLElement).isContentEditable);
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          (activeEl as HTMLElement).isContentEditable);
       if (isInput) return;
+
+      if (!playerRef.current) return;
 
       if (e.key === ' ' || e.key === 'k') {
         e.preventDefault();
-        if (isPlaying) {
-          sendIframeCommand('pauseVideo');
-          setIsPlaying(false);
-        } else {
-          sendIframeCommand('playVideo');
-          setIsPlaying(true);
+        try {
+          const state = playerRef.current.getPlayerState();
+          if (state === 1) {
+            playerRef.current.pauseVideo();
+          } else {
+            playerRef.current.playVideo();
+          }
+        } catch {
+          // ignore
         }
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        handleSeek(Math.max(0, currentTime - 5));
+        try {
+          const cur = playerRef.current.getCurrentTime() || currentTime;
+          handleSeek(Math.max(0, cur - 5));
+        } catch {
+          // ignore
+        }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        handleSeek(Math.min(effectiveDuration, currentTime + 5));
+        try {
+          const cur = playerRef.current.getCurrentTime() || currentTime;
+          handleSeek(Math.min(effectiveDuration, cur + 5));
+        } catch {
+          // ignore
+        }
       } else if (e.key === 'f') {
         e.preventDefault();
         onToggleFocusMode();
       } else if (e.key === 'm') {
         e.preventDefault();
-        if (isMuted) {
-          sendIframeCommand('unMute');
-          setIsMuted(false);
-        } else {
-          sendIframeCommand('mute');
-          setIsMuted(true);
+        try {
+          if (playerRef.current.isMuted()) {
+            playerRef.current.unMute();
+          } else {
+            playerRef.current.mute();
+          }
+        } catch {
+          // ignore
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, currentTime, effectiveDuration, sendIframeCommand, onToggleFocusMode, isMuted, handleSeek]);
-
-  // Periodic progress tracker while playing
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setCurrentTime((prev) => {
-          const next = Math.min(effectiveDuration > 0 ? effectiveDuration : prev + 1, prev + 1);
-          onProgressUpdate(next, effectiveDuration);
-          return next;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying, effectiveDuration, onProgressUpdate]);
+  }, [currentTime, effectiveDuration, onToggleFocusMode, handleSeek]);
 
   const handleSpeedChange = (speed: number) => {
     setPlaybackSpeed(speed);
-    sendIframeCommand('setPlaybackRate', [speed]);
+    if (playerRef.current && typeof playerRef.current.setPlaybackRate === 'function') {
+      try {
+        playerRef.current.setPlaybackRate(speed);
+      } catch {
+        // ignore
+      }
+    }
   };
 
   return (
     <div className="space-y-4">
-      {/* Video Iframe Frame */}
-      <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-gray-800 group">
-        <iframe
-          ref={iframeRef}
-          src={embedUrl}
-          title={video.title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="w-full h-full border-0"
-        />
-      </div>
+      {/* Video Container Target for YouTube YT.Player */}
+      <div
+        ref={containerRef}
+        className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-gray-800"
+      />
 
-      {/* Control Bar */}
+      {/* Control & Live YouTube Status Bar */}
       <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-4 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        {/* Active Timer Status & Pauses indicator */}
+        {/* Real-time YouTube Player Status indicator */}
         <div className="flex items-center gap-3">
           <div
             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
@@ -236,15 +349,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 isPlaying ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'
               }`}
             />
-            <span>{isPlaying ? 'Watch Timer Active (Video Playing)' : 'Timer Paused (Video Stopped)'}</span>
+            <span>{isPlaying ? 'Video Playing (Timer Active)' : 'Video Paused'}</span>
           </div>
 
           <div className="text-xs font-medium text-gray-500 dark:text-gray-400 hidden sm:block">
-            <span className="font-bold text-gray-800 dark:text-gray-200">{pauseCount}</span> {pauseCount === 1 ? 'pause' : 'pauses'} logged
+            <span className="font-bold text-gray-800 dark:text-gray-200">{pauseCount}</span>{' '}
+            {pauseCount === 1 ? 'pause' : 'pauses'} logged
           </div>
         </div>
 
-        {/* Speed & Focus & Mark Completed Controls */}
+        {/* Speed, Focus & Mark Completed Controls */}
         <div className="flex items-center gap-2.5 flex-wrap ml-auto">
           {/* Speed selector */}
           <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700/60 p-1 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -290,3 +404,4 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     </div>
   );
 };
+

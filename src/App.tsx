@@ -98,6 +98,10 @@ export function LearnVerseApp() {
     // Seed database if empty
     seedInitialDataIfEmpty();
 
+    const handleSnapshotError = (err: any) => {
+      console.warn('Firestore real-time connection notice (operating in offline/cached mode):', err?.message || err);
+    };
+
     // 1. Realtime listener for Videos
     const unsubVideos = onSnapshot(collection(db, 'videos'), (snapshot) => {
       const vList: VideoItem[] = [];
@@ -105,7 +109,7 @@ export function LearnVerseApp() {
         vList.push(docSnap.data() as VideoItem);
       });
       setVideos(vList);
-    });
+    }, handleSnapshotError);
 
     // 2. Realtime listener for Playlists
     const unsubPlaylists = onSnapshot(collection(db, 'playlists'), (snapshot) => {
@@ -114,7 +118,7 @@ export function LearnVerseApp() {
         plList.push(docSnap.data() as Playlist);
       });
       setPlaylists(plList);
-    });
+    }, handleSnapshotError);
 
     // 3. Realtime listener for Progress
     const unsubProgress = onSnapshot(collection(db, 'progress'), (snapshot) => {
@@ -124,42 +128,41 @@ export function LearnVerseApp() {
         pMap[data.videoId] = data;
       });
       setProgressMap(pMap);
-    });
+    }, handleSnapshotError);
 
-
-    // 3. Realtime listener for Notes
+    // 4. Realtime listener for Notes
     const unsubNotes = onSnapshot(collection(db, 'notes'), (snapshot) => {
       const nList: VideoNote[] = [];
       snapshot.forEach((docSnap) => {
         nList.push(docSnap.data() as VideoNote);
       });
       setNotes(nList);
-    });
+    }, handleSnapshotError);
 
-    // 4. Realtime listener for Bookmarks
+    // 5. Realtime listener for Bookmarks
     const unsubBookmarks = onSnapshot(collection(db, 'bookmarks'), (snapshot) => {
       const bList: VideoBookmark[] = [];
       snapshot.forEach((docSnap) => {
         bList.push(docSnap.data() as VideoBookmark);
       });
       setBookmarks(bList);
-    });
+    }, handleSnapshotError);
 
-    // 5. Listener for Learning Goals
+    // 6. Listener for Learning Goals
     const unsubGoal = onSnapshot(doc(db, 'learningGoals', 'default-goal'), (docSnap) => {
       if (docSnap.exists()) {
         setGoal(docSnap.data() as LearningGoal);
       }
-    });
+    }, handleSnapshotError);
 
-    // 6. Listener for Activity Logs
+    // 7. Listener for Activity Logs
     const unsubLogs = onSnapshot(collection(db, 'activityLogs'), (snapshot) => {
       const lList: ActivityLog[] = [];
       snapshot.forEach((docSnap) => {
         lList.push(docSnap.data() as ActivityLog);
       });
       setActivityLogs(lList);
-    });
+    }, handleSnapshotError);
 
     return () => {
       unsubVideos();
@@ -258,9 +261,6 @@ export function LearnVerseApp() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col font-sans transition-colors selection:bg-indigo-500 selection:text-white">
       {/* Banner for Global Paste Detection Notifications */}
       {!isWatchingAndZen && <GlobalPasteVideoAction variant="banner" />}
-
-      {/* Public Data Disclaimer Banner */}
-      {!isWatchingAndZen && <PublicDataWarningBanner />}
 
       {/* Header Bar */}
       {!isWatchingAndZen && (

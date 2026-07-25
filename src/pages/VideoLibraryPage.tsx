@@ -45,8 +45,22 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   const [categoryFilter, setCategoryFilter] = useState<string>(selectedCategoryFilter || 'All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
-  const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+
+  // Absolute last watched video ID
+  const lastWatchedVideoId = useMemo(() => {
+    let latestId: string | null = null;
+    let maxTime = 0;
+    for (const v of videos) {
+      const t = progressMap[v.id]?.lastWatchedAt || 0;
+      if (t > maxTime) {
+        maxTime = t;
+        latestId = v.id;
+      }
+    }
+    return latestId;
+  }, [videos, progressMap]);
 
   // Filter & Sort Logic
   const filteredVideos = useMemo(() => {
@@ -90,6 +104,15 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
         return true;
       })
       .sort((a, b) => {
+        const lastA = progressMap[a.id]?.lastWatchedAt || 0;
+        const lastB = progressMap[b.id]?.lastWatchedAt || 0;
+
+        if (sortBy === 'recent') {
+          if (lastA > 0 || lastB > 0) {
+            if (lastA !== lastB) return lastB - lastA;
+          }
+          return b.createdAt - a.createdAt;
+        }
         if (sortBy === 'newest') return b.createdAt - a.createdAt;
         if (sortBy === 'oldest') return a.createdAt - b.createdAt;
         if (sortBy === 'title') return a.title.localeCompare(b.title);
@@ -218,6 +241,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-700/80 border border-transparent text-gray-900 dark:text-white font-medium focus:border-indigo-500 outline-hidden"
             >
+              <option value="recent">Sort: Recently Played</option>
               <option value="newest">Sort: Newest</option>
               <option value="oldest">Sort: Oldest</option>
               <option value="title">Sort: Title (A-Z)</option>
@@ -250,6 +274,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
               progress={progressMap[video.id]}
               viewMode="grid"
               isInWatchLater={watchLaterIds.includes(video.id)}
+              isLastWatched={video.id === lastWatchedVideoId}
               onToggleWatchLater={onToggleWatchLater}
               onSelect={onSelectVideo}
               onArchiveToggle={onArchiveToggle}
@@ -267,6 +292,7 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
               progress={progressMap[video.id]}
               viewMode="list"
               isInWatchLater={watchLaterIds.includes(video.id)}
+              isLastWatched={video.id === lastWatchedVideoId}
               onToggleWatchLater={onToggleWatchLater}
               onSelect={onSelectVideo}
               onArchiveToggle={onArchiveToggle}

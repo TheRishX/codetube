@@ -41,13 +41,10 @@ export const GlobalPasteVideoAction: React.FC<{ variant?: 'button' | 'banner' | 
   return (
     <button
       onClick={() => openAddVideoModal()}
-      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-semibold text-xs sm:text-sm shadow-md shadow-indigo-500/25 transition-all hover:shadow-lg active:scale-95 group shrink-0"
+      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs sm:text-sm shadow-md shadow-indigo-500/20 transition-all hover:scale-[1.02] active:scale-95 shrink-0"
     >
-      <Youtube className="w-4 h-4 text-red-400 group-hover:scale-110 transition-transform" />
-      <span>Paste YouTube Link</span>
-      <span className="hidden md:inline-block px-1.5 py-0.5 rounded-md bg-white/20 text-[10px] font-mono text-white/90">
-        Ctrl+V
-      </span>
+      <Plus className="w-4 h-4" />
+      <span>Add Video</span>
     </button>
   );
 };

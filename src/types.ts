@@ -107,7 +107,7 @@ export interface CodeSnippet {
 export type ViewMode = 'grid' | 'list';
 
 
-export type SortOption = 'newest' | 'oldest' | 'title' | 'progress' | 'duration';
+export type SortOption = 'recent' | 'newest' | 'oldest' | 'title' | 'progress' | 'duration';
 
 export interface FilterOptions {
   searchQuery: string;

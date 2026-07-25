@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, CheckCircle2, Archive, Trash2, Clock, Tag, ExternalLink, Edit3 } from 'lucide-react';
+import { Play, CheckCircle2, Archive, Trash2, Clock, Tag, ExternalLink, Edit3, Flame } from 'lucide-react';
 import { VideoItem, VideoProgress, ViewMode } from '../types';
 import { formatDuration } from '../lib/youtube';
 import { ProgressBar } from './ProgressBar';
@@ -9,6 +9,7 @@ interface VideoCardProps {
   progress?: VideoProgress;
   viewMode?: ViewMode;
   isInWatchLater?: boolean;
+  isLastWatched?: boolean;
   onToggleWatchLater?: (video: VideoItem) => void;
   onSelect: (video: VideoItem) => void;
   onArchiveToggle: (video: VideoItem) => void;
@@ -21,6 +22,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
   progress,
   viewMode = 'grid',
   isInWatchLater = false,
+  isLastWatched = false,
   onToggleWatchLater,
   onSelect,
   onArchiveToggle,
@@ -29,6 +31,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
 }) => {
   const isCompleted = video.status === 'completed' || (progress && progress.percentageCompleted === 100);
   const percent = progress?.percentageCompleted || (isCompleted ? 100 : 0);
+  const watchedSecs = progress?.watchedSeconds || 0;
 
   const difficultyColors = {
     Beginner: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300',
@@ -38,7 +41,13 @@ export const VideoCard: React.FC<VideoCardProps> = ({
 
   if (viewMode === 'list') {
     return (
-      <div className="group bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 p-4 shadow-xs hover:shadow-md transition-all flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div
+        className={`group bg-white dark:bg-gray-800/90 rounded-2xl p-4 transition-all flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between ${
+          isLastWatched
+            ? 'border-2 border-red-500 shadow-lg shadow-red-500/20 ring-2 ring-red-500/30 dark:border-red-500'
+            : 'border border-gray-200/80 dark:border-gray-700/80 shadow-xs hover:shadow-md'
+        }`}
+      >
         <div className="flex gap-4 items-center min-w-0 flex-1">
           {/* Thumbnail */}
           <div
@@ -52,10 +61,17 @@ export const VideoCard: React.FC<VideoCardProps> = ({
               loading="lazy"
             />
             <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="p-2.5 rounded-full bg-indigo-600 text-white shadow-lg">
-                <Play className="w-4 h-4 fill-white" />
+              <div className={`p-2.5 rounded-full text-white shadow-lg ${isLastWatched ? 'bg-red-600' : 'bg-indigo-600'}`}>
+                <Play className="w-4 h-4 fill-white ml-0.5" />
               </div>
             </div>
+
+            {isLastWatched && (
+              <span className="absolute top-1.5 left-1.5 bg-red-600 text-white text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-md animate-pulse">
+                <Flame className="w-3 h-3 fill-white" /> Last Played
+              </span>
+            )}
+
             <span className="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-md">
               {formatDuration(video.duration)}
             </span>
@@ -64,6 +80,11 @@ export const VideoCard: React.FC<VideoCardProps> = ({
           {/* Details */}
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
+              {isLastWatched && (
+                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 flex items-center gap-1 border border-red-300 dark:border-red-800">
+                  <Flame className="w-3 h-3 fill-red-600 text-red-600" /> Last Watched
+                </span>
+              )}
               <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
                 {video.category}
               </span>
@@ -98,10 +119,20 @@ export const VideoCard: React.FC<VideoCardProps> = ({
         <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
           <button
             onClick={() => onSelect(video)}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs shadow-xs transition-colors flex items-center gap-1.5"
+            className={`px-3.5 py-2 rounded-xl text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1.5 ${
+              isLastWatched
+                ? 'bg-red-600 hover:bg-red-700 shadow-md shadow-red-500/20'
+                : 'bg-indigo-600 hover:bg-indigo-700'
+            }`}
           >
             <Play className="w-3.5 h-3.5 fill-white" />
-            <span>{percent > 0 && percent < 100 ? 'Resume' : 'Watch'}</span>
+            <span>
+              {watchedSecs > 0 && !isCompleted
+                ? `Resume (${formatDuration(watchedSecs)})`
+                : isCompleted
+                ? 'Re-watch'
+                : 'Watch'}
+            </span>
           </button>
 
           {onToggleWatchLater && (
@@ -153,7 +184,13 @@ export const VideoCard: React.FC<VideoCardProps> = ({
   }
 
   return (
-    <div className="group bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 overflow-hidden shadow-xs hover:shadow-xl transition-all duration-300 flex flex-col justify-between">
+    <div
+      className={`group bg-white dark:bg-gray-800/90 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col justify-between ${
+        isLastWatched
+          ? 'border-2 border-red-500 shadow-xl shadow-red-500/25 ring-2 ring-red-500/30 dark:border-red-500'
+          : 'border border-gray-200/80 dark:border-gray-700/80 shadow-xs hover:shadow-xl'
+      }`}
+    >
       <div>
         {/* Thumbnail Box */}
         <div
@@ -170,16 +207,22 @@ export const VideoCard: React.FC<VideoCardProps> = ({
 
           {/* Hover Play Button */}
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-xl transform group-hover:scale-110 transition-transform">
+            <div className={`w-12 h-12 rounded-full text-white flex items-center justify-center shadow-xl transform group-hover:scale-110 transition-transform ${isLastWatched ? 'bg-red-600' : 'bg-indigo-600'}`}>
               <Play className="w-5 h-5 fill-white ml-0.5" />
             </div>
           </div>
 
           {/* Badges on Thumbnail */}
-          <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white">
-              {video.category}
-            </span>
+          <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap z-10">
+            {isLastWatched ? (
+              <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-red-600 text-white flex items-center gap-1 shadow-md animate-pulse uppercase tracking-wider">
+                <Flame className="w-3.5 h-3.5 fill-white" /> Last Played
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white">
+                {video.category}
+              </span>
+            )}
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${difficultyColors}`}>
               {video.difficulty}
             </span>
@@ -192,7 +235,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
                 e.stopPropagation();
                 onToggleWatchLater(video);
               }}
-              className={`absolute top-3 right-3 p-1.5 rounded-lg backdrop-blur-md transition-all shadow-md ${
+              className={`absolute top-3 right-3 p-1.5 rounded-lg backdrop-blur-md transition-all shadow-md z-10 ${
                 isInWatchLater
                   ? 'bg-amber-500 text-white font-bold'
                   : 'bg-black/60 text-white/80 hover:text-white hover:bg-black/80'
@@ -204,7 +247,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
           )}
 
           {/* Duration & Completion Badge */}
-          <div className="absolute bottom-3 right-3 flex items-center gap-2">
+          <div className="absolute bottom-3 right-3 flex items-center gap-2 z-10">
             {isCompleted ? (
               <span className="bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
                 <CheckCircle2 className="w-3 h-3" /> Done
@@ -219,6 +262,13 @@ export const VideoCard: React.FC<VideoCardProps> = ({
 
         {/* Content Body */}
         <div className="p-4 space-y-2">
+          {isLastWatched && (
+            <div className="flex items-center gap-1.5 text-xs font-extrabold text-red-600 dark:text-red-400">
+              <Flame className="w-3.5 h-3.5 fill-current" />
+              <span>Last Watched Video</span>
+            </div>
+          )}
+
           <h3
             onClick={() => onSelect(video)}
             className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors leading-snug"
@@ -238,13 +288,27 @@ export const VideoCard: React.FC<VideoCardProps> = ({
       </div>
 
       {/* Card Footer Actions */}
-      <div className="px-4 py-3 bg-gray-50/80 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700/60 flex items-center justify-between">
+      <div className={`px-4 py-3 border-t flex items-center justify-between ${
+        isLastWatched
+          ? 'bg-red-50/80 dark:bg-red-950/30 border-red-200 dark:border-red-900/60'
+          : 'bg-gray-50/80 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700/60'
+      }`}>
         <button
           onClick={() => onSelect(video)}
-          className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 flex items-center gap-1"
+          className={`text-xs font-bold flex items-center gap-1 transition-colors ${
+            isLastWatched
+              ? 'text-red-600 dark:text-red-400 hover:text-red-700 font-extrabold'
+              : 'text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300'
+          }`}
         >
           <Play className="w-3.5 h-3.5 fill-current" />
-          <span>{percent > 0 && percent < 100 ? 'Resume Video' : 'Start Video'}</span>
+          <span>
+            {watchedSecs > 0 && !isCompleted
+              ? `Resume (${formatDuration(watchedSecs)})`
+              : isCompleted
+              ? 'Re-watch Video'
+              : 'Start Video'}
+          </span>
         </button>
 
         <div className="flex items-center gap-1">
@@ -279,3 +343,4 @@ export const VideoCard: React.FC<VideoCardProps> = ({
     </div>
   );
 };
+
