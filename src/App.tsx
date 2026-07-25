@@ -306,6 +306,7 @@ export function LearnVerseApp() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           streakCount={streakCount}
+          preferences={layoutPreferences}
         />
       )}
 

@@ -35,9 +35,9 @@ export const VideoSummaryPanel: React.FC<VideoSummaryPanelProps> = ({
     }
   };
 
+  // Reset summary when video changes, do NOT auto-call Gemini API
   useEffect(() => {
-    // Auto-generate initial summary when loaded
-    handleGenerateSummary();
+    setSummary(null);
   }, [video.id]);
 
   const handleCopy = () => {

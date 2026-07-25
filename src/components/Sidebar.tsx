@@ -35,8 +35,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCustomizer,
 }) => {
   const hiddenItems = preferences?.hiddenNavItems || [];
+  const navOrder = preferences?.navOrder || [];
 
-  const allNavItems = [
+  const rawNavItems = [
     { id: 'dashboard', label: 'Home / Feed', icon: LayoutDashboard },
     { id: 'playlists', label: 'Playlists', icon: ListVideo, badge: playlistCount > 0 ? `${playlistCount}` : undefined, isHot: true },
     { id: 'recommendations', label: 'Recommendations', icon: Compass },
@@ -47,8 +48,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'settings', label: 'Settings & Docs', icon: Settings },
   ];
 
+  // Reorder items according to navOrder
+  const allNavItems = navOrder.length > 0
+    ? navOrder.map((id) => rawNavItems.find((item) => item.id === id)).filter((item): item is typeof rawNavItems[0] => Boolean(item))
+    : rawNavItems;
+
+  // Append any missing items
+  rawNavItems.forEach((item) => {
+    if (!allNavItems.some((n) => n.id === item.id)) {
+      allNavItems.push(item);
+    }
+  });
+
   // Filter out hidden items configured by user
   const visibleNavItems = allNavItems.filter((item) => !hiddenItems.includes(item.id));
+
+  // Check if main sidebar is hidden via preferences
+  if (preferences?.showSidebar === false) {
+    return null;
+  }
 
   // Collapsed Sidebar View (Icon-only mode)
   if (isCollapsed) {
@@ -157,23 +175,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Progress Widget Card in Sidebar */}
-      <div className="mt-8 p-4 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/30 border border-indigo-100 dark:border-indigo-900/50">
-        <div className="flex items-center gap-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 mb-1">
-          <Sparkles className="w-4 h-4 text-indigo-500" />
-          <span>Learning Progress</span>
+      {preferences?.showSidebarStats !== false && (
+        <div className="mt-8 p-4 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/30 border border-indigo-100 dark:border-indigo-900/50">
+          <div className="flex items-center gap-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 mb-1">
+            <Sparkles className="w-4 h-4 text-indigo-500" />
+            <span>Learning Progress</span>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            {completedCount} of {videoCount} videos completed
+          </p>
+          <div className="w-full bg-indigo-200/60 dark:bg-indigo-900/60 h-2 rounded-full overflow-hidden">
+            <div
+              className="bg-indigo-600 dark:bg-indigo-400 h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${videoCount > 0 ? Math.round((completedCount / videoCount) * 100) : 0}%`,
+              }}
+            />
+          </div>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-          {completedCount} of {videoCount} videos completed
-        </p>
-        <div className="w-full bg-indigo-200/60 dark:bg-indigo-900/60 h-2 rounded-full overflow-hidden">
-          <div
-            className="bg-indigo-600 dark:bg-indigo-400 h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${videoCount > 0 ? Math.round((completedCount / videoCount) * 100) : 0}%`,
-            }}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Customize Layout Shortcut Button at Sidebar Bottom */}
       {onOpenCustomizer && (

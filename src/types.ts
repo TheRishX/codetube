@@ -111,17 +111,60 @@ export type ViewMode = 'grid' | 'list';
 export type SortOption = 'recent' | 'newest' | 'oldest' | 'title' | 'progress' | 'duration';
 
 export interface AppLayoutPreferences {
-  hiddenNavItems: string[];
-  sidebarCollapsed: boolean;
-  categoryOrder: string[];
-  hiddenCategories: string[];
-  showLastPlayedOnDashboard: boolean;
-  showLibraryOnDashboard: boolean;
+  // Navigation & Sidebar
+  showSidebar?: boolean;
+  sidebarCollapsed?: boolean;
+  navOrder?: string[];
+  hiddenNavItems?: string[];
+  showSidebarStats?: boolean;
+
+  // Header Elements
+  showHeaderTimer?: boolean;
+  showHeaderStreak?: boolean;
+  showHeaderQuickAdd?: boolean;
+  showHeaderCustomizerButton?: boolean;
+
+  // Dashboard Sections & Filtering
+  showCategoryFilterBar?: boolean;
+  showLastPlayedOnDashboard?: boolean;
+  showLibraryOnDashboard?: boolean;
+  showDashboardSearch?: boolean;
+  showDashboardStatusFilter?: boolean;
+  showDashboardSortBy?: boolean;
+
+  // Category Bar Customization
+  categoryOrder?: string[];
+  hiddenCategories?: string[];
 }
 
 export const DEFAULT_LAYOUT_PREFERENCES: AppLayoutPreferences = {
-  hiddenNavItems: [],
+  showSidebar: true,
   sidebarCollapsed: false,
+  navOrder: [
+    'dashboard',
+    'playlists',
+    'recommendations',
+    'library',
+    'categories',
+    'notes',
+    'analytics',
+    'settings',
+  ],
+  hiddenNavItems: [],
+  showSidebarStats: true,
+
+  showHeaderTimer: true,
+  showHeaderStreak: true,
+  showHeaderQuickAdd: true,
+  showHeaderCustomizerButton: true,
+
+  showCategoryFilterBar: true,
+  showLastPlayedOnDashboard: true,
+  showLibraryOnDashboard: true,
+  showDashboardSearch: true,
+  showDashboardStatusFilter: true,
+  showDashboardSortBy: true,
+
   categoryOrder: [
     'mern-stack',
     'javascript',
@@ -140,9 +183,87 @@ export const DEFAULT_LAYOUT_PREFERENCES: AppLayoutPreferences = {
     'careers',
   ],
   hiddenCategories: [],
-  showLastPlayedOnDashboard: true,
-  showLibraryOnDashboard: true,
 };
+
+export function isCategoryMatch(videoCategory: string, targetCategory: string, videoTags?: string[]): boolean {
+  if (!videoCategory || !targetCategory) return false;
+  if (targetCategory === 'All' || targetCategory === 'all') return true;
+
+  const vCat = videoCategory.trim().toLowerCase();
+  const target = targetCategory.trim().toLowerCase();
+
+  // Exact string match
+  if (vCat === target) return true;
+
+  // Match category by ID or Name
+  const matchedCategory = CATEGORIES.find(
+    (c) => c.id.toLowerCase() === target || c.name.toLowerCase() === target
+  );
+
+  if (matchedCategory) {
+    const catId = matchedCategory.id.toLowerCase();
+    const catName = matchedCategory.name.toLowerCase();
+    if (vCat === catId || vCat === catName) return true;
+  }
+
+  // Common aliases
+  if (
+    (target.includes('dsa') || target.includes('data structure') || target === 'dsa') &&
+    (vCat.includes('dsa') || vCat.includes('data structure') || vCat.includes('algorithm'))
+  ) {
+    return true;
+  }
+
+  if (
+    (target.includes('mern') || target === 'mern-stack') &&
+    (vCat.includes('mern') || vCat.includes('full stack') || vCat.includes('node'))
+  ) {
+    return true;
+  }
+
+  if (
+    (target.includes('react') || target === 'react') &&
+    (vCat.includes('react') || vCat.includes('jsx'))
+  ) {
+    return true;
+  }
+
+  if (
+    (target.includes('javascript') || target === 'javascript') &&
+    (vCat.includes('javascript') || vCat.includes('js') || vCat.includes('es6'))
+  ) {
+    return true;
+  }
+
+  if (
+    (target.includes('system design') || target === 'system-design') &&
+    (vCat.includes('system design') || vCat.includes('architecture'))
+  ) {
+    return true;
+  }
+
+  if (
+    (target.includes('database') || target === 'databases') &&
+    (vCat.includes('database') || vCat.includes('sql') || vCat.includes('nosql'))
+  ) {
+    return true;
+  }
+
+  // Tag match
+  if (videoTags && videoTags.length > 0) {
+    if (
+      videoTags.some(
+        (t) =>
+          t.toLowerCase() === target ||
+          (matchedCategory && (t.toLowerCase() === matchedCategory.id || t.toLowerCase() === matchedCategory.name.toLowerCase()))
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export interface FilterOptions {
   searchQuery: string;

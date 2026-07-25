@@ -3,6 +3,7 @@ import { PlayCircle, Search, Menu, Flame, Sparkles, Youtube, Sliders } from 'luc
 import { ThemeToggle } from './ThemeToggle';
 import { GlobalPasteVideoAction } from './GlobalPasteVideoAction';
 import { StudySessionTimer } from './StudySessionTimer';
+import { AppLayoutPreferences } from '../types';
 
 interface HeaderProps {
   currentTab: string;
@@ -13,6 +14,7 @@ interface HeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   streakCount: number;
+  preferences?: AppLayoutPreferences;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   onSearchChange,
   streakCount,
+  preferences,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800/80 transition-colors">
@@ -32,10 +35,10 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Left Logo & Hamburger Toggles */}
           <div className="flex items-center gap-2">
             {/* Desktop Hamburger Toggle */}
-            {onToggleSidebarCollapse && (
+            {onToggleSidebarCollapse && preferences?.showSidebar !== false && (
               <button
                 onClick={onToggleSidebarCollapse}
-                className="hidden lg:flex p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="hidden lg:flex p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
                 title="Toggle sidebar expansion"
                 aria-label="Toggle sidebar"
               >
@@ -46,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Mobile Hamburger Toggle */}
             <button
               onClick={onToggleMobileMenu}
-              className="lg:hidden p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="lg:hidden p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
               aria-label="Toggle mobile menu"
             >
               <Menu className="w-5 h-5" />
@@ -54,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               onClick={() => onNavigate('dashboard')}
-              className="flex items-center gap-2 group text-left ml-1"
+              className="flex items-center gap-2 group text-left ml-1 cursor-pointer"
             >
               <div className="w-10 h-7 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md shadow-red-600/30 group-hover:scale-105 transition-transform">
                 <Youtube className="w-5 h-5 fill-white text-white" />
@@ -90,22 +93,24 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Right Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Study Session Timer */}
-            <StudySessionTimer />
+            {preferences?.showHeaderTimer !== false && <StudySessionTimer />}
 
             {/* Streak Counter Badge */}
-            <div
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold shrink-0 hidden sm:flex"
-              title={`${streakCount} day learning streak!`}
-            >
-              <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
-              <span>{streakCount} {streakCount === 1 ? 'Day' : 'Days'}</span>
-            </div>
+            {preferences?.showHeaderStreak !== false && (
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold shrink-0 hidden sm:flex"
+                title={`${streakCount} day learning streak!`}
+              >
+                <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
+                <span>{streakCount} {streakCount === 1 ? 'Day' : 'Days'}</span>
+              </div>
+            )}
 
             {/* Customize Layout button */}
-            {onOpenCustomizer && (
+            {onOpenCustomizer && preferences?.showHeaderCustomizerButton !== false && (
               <button
                 onClick={onOpenCustomizer}
-                className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 title="Customize UI Layout"
               >
                 <Sliders className="w-4 h-4 text-indigo-500" />
@@ -114,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Global Paste YouTube Button */}
-            <GlobalPasteVideoAction variant="button" />
+            {preferences?.showHeaderQuickAdd !== false && <GlobalPasteVideoAction variant="button" />}
 
             {/* Theme Switcher */}
             <ThemeToggle className="hidden sm:inline-flex" />
