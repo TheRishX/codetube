@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Youtube, Check, AlertCircle, Loader2, Tag, Layers, BarChart, Sparkles, X } from 'lucide-react';
+import { Youtube, Check, AlertCircle, Loader2, Tag, Layers, BarChart, Sparkles, X, ListVideo } from 'lucide-react';
 import { useGlobalPaste } from '../context/GlobalPasteContext';
-import { CATEGORIES, Difficulty, VideoItem } from '../types';
-import { extractYouTubeId, fetchYouTubeMetadata, getYouTubeThumbnail, isValidYouTubeUrl, parseDurationToSeconds, detectCategoryFromTitleAndChannel } from '../lib/youtube';
-import { saveVideoToFirestore } from '../lib/firebase';
+import { CATEGORIES, Difficulty, VideoItem, Playlist } from '../types';
+import {
+  extractYouTubeId,
+  extractYouTubePlaylistId,
+  fetchYouTubeMetadata,
+  fetchYouTubePlaylistMetadata,
+  getYouTubeThumbnail,
+  detectCategoryFromTitleAndChannel,
+  YouTubePlaylistMetadata,
+} from '../lib/youtube';
+import { saveVideoToFirestore, savePlaylistToFirestore } from '../lib/firebase';
 
 interface AddVideoModalProps {
   existingVideos?: VideoItem[];
@@ -16,6 +24,9 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
 
   const [urlInput, setUrlInput] = useState('');
   const [extractedId, setExtractedId] = useState<string | null>(null);
+  const [extractedPlaylistId, setExtractedPlaylistId] = useState<string | null>(null);
+  const [playlistMeta, setPlaylistMeta] = useState<YouTubePlaylistMetadata | null>(null);
+
   const [title, setTitle] = useState('');
   const [channelName, setChannelName] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0].name);
@@ -28,6 +39,7 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [duplicateVideo, setDuplicateVideo] = useState<VideoItem | null>(null);
   const [successVideo, setSuccessVideo] = useState<VideoItem | null>(null);
+  const [successPlaylist, setSuccessPlaylist] = useState<Playlist | null>(null);
 
   useEffect(() => {
     if (pastedUrl) {
@@ -39,33 +51,56 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
   const handleProcessUrl = async (url: string) => {
     setErrorMsg(null);
     setSuccessVideo(null);
+    setSuccessPlaylist(null);
     setDuplicateVideo(null);
-    const id = extractYouTubeId(url);
+    setPlaylistMeta(null);
 
-    if (id) {
-      setExtractedId(id);
+    const plId = extractYouTubePlaylistId(url);
+    const vidId = extractYouTubeId(url);
+
+    if (plId) {
+      setExtractedPlaylistId(plId);
+      setExtractedId(null);
+      setIsFetchingMeta(true);
+      try {
+        const meta = await fetchYouTubePlaylistMetadata(plId);
+        setPlaylistMeta(meta);
+        setTitle(meta.title);
+        setChannelName(meta.channelName);
+        const autoCat = detectCategoryFromTitleAndChannel(meta.title, meta.channelName);
+        setCategory(autoCat);
+      } catch (err) {
+        setTitle(`YouTube Playlist (${plId})`);
+        setChannelName('YouTube Channel');
+      } finally {
+        setIsFetchingMeta(false);
+      }
+    } else if (vidId) {
+      setExtractedId(vidId);
+      setExtractedPlaylistId(null);
 
       // Check for duplicate in existing library
-      const existing = existingVideos.find((v) => v.youtubeId === id);
+      const existing = existingVideos.find((v) => v.youtubeId === vidId);
       if (existing) {
         setDuplicateVideo(existing);
       }
 
       setIsFetchingMeta(true);
       try {
-        const meta = await fetchYouTubeMetadata(id);
+        const meta = await fetchYouTubeMetadata(vidId);
         setTitle(meta.title);
         setChannelName(meta.authorName);
         const autoCat = detectCategoryFromTitleAndChannel(meta.title, meta.authorName);
         setCategory(autoCat);
       } catch (err) {
-        setTitle(`YouTube Video (${id})`);
+        setTitle(`YouTube Video (${vidId})`);
         setChannelName('Unknown Channel');
       } finally {
         setIsFetchingMeta(false);
       }
     } else {
       setExtractedId(null);
+      setExtractedPlaylistId(null);
     }
   };
 
@@ -90,12 +125,13 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!extractedId) {
-      setErrorMsg('Please enter a valid YouTube URL or video ID.');
+
+    if (!extractedId && !extractedPlaylistId) {
+      setErrorMsg('Please enter a valid YouTube Video or Playlist URL.');
       return;
     }
 
-    if (duplicateVideo) {
+    if (duplicateVideo && !extractedPlaylistId) {
       setErrorMsg(`This video is already in your library as "${duplicateVideo.title}".`);
       return;
     }
@@ -104,27 +140,73 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
     setErrorMsg(null);
 
     try {
-      const videoId = `vid-${extractedId}-${Date.now().toString().slice(-4)}`;
+      if (extractedPlaylistId && playlistMeta) {
+        // Save Playlist
+        const playlistVideos: VideoItem[] = playlistMeta.videos.map((v, idx) => ({
+          id: `pvid-${extractedPlaylistId}-${idx}-${Date.now().toString().slice(-4)}`,
+          youtubeId: v.youtubeId,
+          youtubeUrl: `https://www.youtube.com/watch?v=${v.youtubeId}`,
+          title: v.title,
+          thumbnail: v.thumbnailUrl,
+          channelName: v.channelName || channelName || playlistMeta.channelName,
+          duration: 0,
+          category,
+          difficulty,
+          tags: tags.length > 0 ? tags : [category, difficulty, 'Playlist'],
+          status: 'not-started',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }));
 
-      const newVideo = await saveVideoToFirestore({
-        id: videoId,
-        youtubeId: extractedId,
-        youtubeUrl: `https://www.youtube.com/watch?v=${extractedId}`,
-        title: title.trim() || `YouTube Video (${extractedId})`,
-        thumbnail: getYouTubeThumbnail(extractedId),
-        channelName: channelName.trim() || 'Unknown Channel',
-        duration: 0, // Auto-calculated from player when loaded
-        category,
-        difficulty,
-        tags: tags.length > 0 ? tags : [category, difficulty],
-        status: 'not-started',
-      });
+        const newPlaylist: Playlist = {
+          id: `pl-${extractedPlaylistId}-${Date.now().toString().slice(-4)}`,
+          playlistId: extractedPlaylistId,
+          title: title.trim() || playlistMeta.title,
+          description: `Imported YouTube playlist with ${playlistVideos.length} videos.`,
+          thumbnail: playlistMeta.thumbnailUrl,
+          channelName: channelName.trim() || playlistMeta.channelName,
+          category,
+          difficulty,
+          totalVideos: playlistVideos.length,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          videos: playlistVideos,
+        };
 
-      setSuccessVideo(newVideo);
-      if (onVideoAdded) onVideoAdded(newVideo);
+        await savePlaylistToFirestore(newPlaylist);
+
+        for (const pVid of playlistVideos) {
+          await saveVideoToFirestore(pVid);
+        }
+
+        setSuccessPlaylist(newPlaylist);
+        if (onVideoAdded && playlistVideos.length > 0) {
+          onVideoAdded(playlistVideos[0]);
+        }
+      } else if (extractedId) {
+        // Save Single Video
+        const videoId = `vid-${extractedId}-${Date.now().toString().slice(-4)}`;
+
+        const newVideo = await saveVideoToFirestore({
+          id: videoId,
+          youtubeId: extractedId,
+          youtubeUrl: `https://www.youtube.com/watch?v=${extractedId}`,
+          title: title.trim() || `YouTube Video (${extractedId})`,
+          thumbnail: getYouTubeThumbnail(extractedId),
+          channelName: channelName.trim() || 'Unknown Channel',
+          duration: 0,
+          category,
+          difficulty,
+          tags: tags.length > 0 ? tags : [category, difficulty],
+          status: 'not-started',
+        });
+
+        setSuccessVideo(newVideo);
+        if (onVideoAdded) onVideoAdded(newVideo);
+      }
     } catch (err: any) {
-      console.error('Failed to save video to Firestore:', err);
-      setErrorMsg('Could not save video to Firestore. Please try again.');
+      console.error('Failed to save to Firestore:', err);
+      setErrorMsg('Could not save to Firestore. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -133,6 +215,8 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
   const resetForm = () => {
     setUrlInput('');
     setExtractedId(null);
+    setExtractedPlaylistId(null);
+    setPlaylistMeta(null);
     setTitle('');
     setChannelName('');
     setCategory(CATEGORIES[0].name);
@@ -142,6 +226,7 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
     setErrorMsg(null);
     setDuplicateVideo(null);
     setSuccessVideo(null);
+    setSuccessPlaylist(null);
   };
 
   const handleClose = () => {
@@ -164,19 +249,49 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
 
         <div className="flex items-center gap-3 mb-6">
           <div className="p-3 rounded-2xl bg-red-500/10 text-red-600 dark:text-red-400">
-            <Youtube className="w-6 h-6" />
+            {extractedPlaylistId ? <ListVideo className="w-6 h-6" /> : <Youtube className="w-6 h-6" />}
           </div>
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              Save YouTube Video
+              {extractedPlaylistId ? 'Import YouTube Playlist' : 'Save YouTube Content'}
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Paste any YouTube URL or let auto-detect process it globally
+              Paste any YouTube video or playlist link (Cmd + V anywhere)
             </p>
           </div>
         </div>
 
-        {successVideo ? (
+        {successPlaylist ? (
+          <div className="space-y-6 text-center py-4">
+            <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto">
+              <Check className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                Playlist Imported Successfully!
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                "{successPlaylist.title}" with {successPlaylist.totalVideos} videos saved to your library.
+              </p>
+            </div>
+
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                onClick={resetForm}
+                className="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Import Another
+              </button>
+              <a
+                href="#playlists"
+                onClick={handleClose}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm shadow-md shadow-indigo-500/20"
+              >
+                View Playlists
+              </a>
+            </div>
+          </div>
+        ) : successVideo ? (
           <div className="space-y-6 text-center py-4">
             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto">
               <Check className="w-8 h-8" />
@@ -208,15 +323,15 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* YouTube URL Input */}
+            {/* YouTube Link Input */}
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                YouTube Link or Video ID *
+                YouTube Video or Playlist Link *
               </label>
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="https://www.youtube.com/watch?v=... or shorts URL"
+                  placeholder="https://www.youtube.com/playlist?list=... or video link"
                   value={urlInput}
                   onChange={handleUrlChange}
                   className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-hidden transition-all pr-10"
@@ -230,8 +345,31 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
               </div>
             </div>
 
-            {/* Thumbnail Preview & Metadata */}
-            {extractedId && (
+            {/* Playlist Preview */}
+            {extractedPlaylistId && (
+              <div className="p-3.5 bg-indigo-50/60 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/80 flex gap-4 items-center">
+                <img
+                  src={playlistMeta?.thumbnailUrl || 'https://img.youtube.com/vi/PkZNo7MFNFg/hqdefault.jpg'}
+                  alt="Playlist Thumbnail"
+                  className="w-28 aspect-video rounded-lg object-cover bg-gray-200 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold mb-1">
+                    <ListVideo className="w-3.5 h-3.5" />
+                    YouTube Playlist ({playlistMeta?.videos.length || 0} Videos)
+                  </div>
+                  <p className="text-xs font-bold text-gray-900 dark:text-white line-clamp-1">
+                    {title || 'Loading playlist title...'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                    {channelName || 'Loading channel...'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Single Video Preview */}
+            {!extractedPlaylistId && extractedId && (
               <div className="p-3.5 bg-gray-50 dark:bg-gray-900/40 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 flex gap-4 items-center">
                 <img
                   src={getYouTubeThumbnail(extractedId)}
@@ -257,13 +395,13 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Video Title
+                  {extractedPlaylistId ? 'Playlist Title' : 'Video Title'}
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. React 19 Full Course"
+                  placeholder="Title"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
                 />
               </div>
@@ -276,14 +414,14 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
                   type="text"
                   value={channelName}
                   onChange={(e) => setChannelName(e.target.value)}
-                  placeholder="e.g. freeCodeCamp"
+                  placeholder="Channel"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
                 />
               </div>
             </div>
 
-            {/* Duplicate Video Banner if present */}
-            {duplicateVideo && (
+            {/* Duplicate Video Banner */}
+            {duplicateVideo && !extractedPlaylistId && (
               <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs">
                 <div className="space-y-0.5">
                   <p className="font-bold text-amber-900 dark:text-amber-200">
@@ -410,13 +548,15 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
               </button>
               <button
                 type="submit"
-                disabled={isSaving || !extractedId}
+                disabled={isSaving || (!extractedId && !extractedPlaylistId)}
                 className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium text-sm transition-all shadow-md shadow-indigo-500/20 flex items-center gap-2"
               >
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" /> Saving...
                   </>
+                ) : extractedPlaylistId ? (
+                  'Import Playlist'
                 ) : (
                   'Save Video'
                 )}

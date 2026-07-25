@@ -31,6 +31,7 @@ export interface VideoProgress {
   completionStatus: 'not-started' | 'in-progress' | 'completed';
   lastWatchedAt: number;
   completedAt: number | null;
+  pausesCount?: number;
 }
 
 export interface VideoNote {
@@ -65,6 +66,7 @@ export interface ActivityLog {
   secondsWatched: number;
   date: string; // YYYY-MM-DD
   timestamp: number;
+  pausesCount?: number;
 }
 
 export interface CategoryInfo {

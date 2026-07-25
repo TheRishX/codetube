@@ -14,13 +14,15 @@ import {
   EyeOff,
   SkipForward,
   Play,
-  ListVideo
+  ListVideo,
+  FileText
 } from 'lucide-react';
 import { VideoItem, VideoProgress, VideoNote, VideoBookmark } from '../types';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { NotesPanel } from '../components/NotesPanel';
 import { BookmarkList } from '../components/BookmarkList';
 import { FocusVideoChat } from '../components/FocusVideoChat';
+import { VideoSummaryPanel } from '../components/VideoSummaryPanel';
 import { VideoCard } from '../components/VideoCard';
 import { saveProgressToFirestore, updateVideoInFirestore } from '../lib/firebase';
 
@@ -70,7 +72,7 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
   const playerSeekRef = useRef<((seconds: number) => void) | null>(null);
 
   // Auto-save progress handler throttled
-  const handleProgressUpdate = async (watchedSeconds: number, totalDuration: number) => {
+  const handleProgressUpdate = async (watchedSeconds: number, totalDuration: number, pauseCount?: number) => {
     const duration = totalDuration || video.duration || 1800;
     const percentage = Math.min(100, Math.round((watchedSeconds / duration) * 100));
     const completionStatus = percentage >= 95 ? 'completed' : percentage > 0 ? 'in-progress' : 'not-started';
@@ -84,6 +86,7 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
       completionStatus,
       lastWatchedAt: Date.now(),
       completedAt: percentage >= 95 ? Date.now() : progress?.completedAt || null,
+      pausesCount: typeof pauseCount === 'number' ? pauseCount : progress?.pausesCount || 0,
     };
 
     try {
@@ -150,7 +153,7 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
   const videoNotes = notes.filter((n) => n.videoId === video.id);
   const videoBookmarks = bookmarks.filter((b) => b.videoId === video.id);
 
-  const [focusTab, setFocusTab] = useState<'chat' | 'notes' | 'bookmarks'>('chat');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'summary' | 'notes' | 'bookmarks' | 'chat'>('summary');
 
   return (
     <div className={`space-y-6 animate-in fade-in duration-300 ${isZenMode ? 'max-w-7xl mx-auto py-2' : ''}`}>
@@ -324,46 +327,50 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
           )}
         </div>
 
-        {/* Right Column: Unified Interactive Sidebar (Chat, Notes, Bookmarks) */}
+        {/* Right Column: Unified Interactive Sidebar (Summary, Chat, Notes, Bookmarks) */}
         <div className="lg:col-span-1 space-y-4 min-w-0 sticky top-4">
           {/* Sidebar Mode Tabs */}
-          <div className="flex bg-gray-100 dark:bg-gray-800/90 p-1 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
-            {isZenMode && (
-              <button
-                onClick={() => setFocusTab('chat')}
-                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  focusTab === 'chat'
-                    ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Tutor</span>
-              </button>
-            )}
+          <div className="flex bg-gray-100 dark:bg-gray-800/90 p-1 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-x-auto">
+            <button
+              onClick={() => setActiveSidebarTab('summary')}
+              className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                activeSidebarTab === 'summary'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI Summary</span>
+            </button>
 
             <button
-              onClick={() => {
-                setFocusTab('notes');
-                setActiveTab('notes');
-              }}
-              className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                (!isZenMode && activeTab === 'notes') || (isZenMode && focusTab === 'notes')
+              onClick={() => setActiveSidebarTab('chat')}
+              className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                activeSidebarTab === 'chat'
                   ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
+              <span>AI Tutor</span>
+            </button>
+
+            <button
+              onClick={() => setActiveSidebarTab('notes')}
+              className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                activeSidebarTab === 'notes'
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
               <span>Notes ({videoNotes.length})</span>
             </button>
 
             <button
-              onClick={() => {
-                setFocusTab('bookmarks');
-                setActiveTab('bookmarks');
-              }}
-              className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                (!isZenMode && activeTab === 'bookmarks') || (isZenMode && focusTab === 'bookmarks')
+              onClick={() => setActiveSidebarTab('bookmarks')}
+              className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                activeSidebarTab === 'bookmarks'
                   ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-xs'
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
               }`}
@@ -374,7 +381,13 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
           </div>
 
           {/* Active Sidebar Tab Content */}
-          {isZenMode && focusTab === 'chat' ? (
+          {activeSidebarTab === 'summary' ? (
+            <VideoSummaryPanel
+              video={video}
+              notes={videoNotes}
+              onNotesChanged={onNotesChanged}
+            />
+          ) : activeSidebarTab === 'chat' ? (
             <FocusVideoChat
               video={video}
               getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
@@ -382,7 +395,7 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
               notes={videoNotes}
               onNotesChanged={onNotesChanged}
             />
-          ) : (isZenMode ? focusTab === 'notes' : activeTab === 'notes') ? (
+          ) : activeSidebarTab === 'notes' ? (
             <NotesPanel
               videoId={video.id}
               notes={videoNotes}

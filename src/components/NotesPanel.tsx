@@ -92,7 +92,7 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
           </h3>
         </div>
         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          Auto-timestamped from video
+          Personal Study Notes
         </span>
       </div>
 
@@ -101,14 +101,11 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
         <textarea
           value={newNoteContent}
           onChange={(e) => setNewNoteContent(e.target.value)}
-          placeholder="Take a timestamped note (e.g. key algorithm step or command)..."
+          placeholder="Take a note (e.g. key algorithm step, command, or formula)..."
           rows={3}
           className="w-full p-3 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 outline-hidden transition-all resize-none"
         />
-        <div className="flex justify-between items-center">
-          <span className="text-[11px] text-gray-400">
-            Note will be stamped at current player time
-          </span>
+        <div className="flex justify-end items-center">
           <button
             type="submit"
             disabled={!newNoteContent.trim() || isSaving}
@@ -147,14 +144,10 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
               className="p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-200/80 dark:border-gray-700/60 space-y-2 group transition-all"
             >
               <div className="flex items-center justify-between">
-                <button
-                  onClick={() => onJumpToTimestamp(note.timestamp)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-mono text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
-                  title="Jump to video timestamp"
-                >
-                  <Clock className="w-3 h-3" />
-                  <span>{formatDuration(note.timestamp)}</span>
-                </button>
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  <StickyNote className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Note</span>
+                </div>
 
                 <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
                   {editingNoteId === note.id ? (

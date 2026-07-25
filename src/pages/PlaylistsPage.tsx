@@ -21,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { Playlist, VideoItem, VideoProgress } from '../types';
-import { getYouTubeThumbnail, isYouTubePlaylistUrl, extractYouTubePlaylistId } from '../lib/youtube';
+import { getYouTubeThumbnail, isYouTubePlaylistUrl, extractYouTubePlaylistId, fetchYouTubePlaylistMetadata, detectCategoryFromTitleAndChannel } from '../lib/youtube';
 import { savePlaylistToFirestore, deletePlaylistFromFirestore, updatePlaylistInFirestore, saveVideoToFirestore } from '../lib/firebase';
 
 interface PlaylistsPageProps {
@@ -84,83 +84,62 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
     setIsCreating(true);
     setCreateMsg(null);
 
-    const playlistId = extractYouTubePlaylistId(playlistUrlInput) || `pl-custom-${Date.now()}`;
-    const cleanUrl = playlistUrlInput.trim();
+    const extractedPlId = extractYouTubePlaylistId(playlistUrlInput);
+    if (!extractedPlId) {
+      setCreateMsg('Invalid YouTube Playlist link. Please ensure it contains a list= parameter.');
+      setIsCreating(false);
+      return;
+    }
 
     try {
-      // Create a production-grade structured playlist
-      const newPlaylist: Playlist = {
-        id: `pl-${Date.now()}`,
-        playlistId: playlistId,
-        title: cleanUrl.includes('javascript') || cleanUrl.includes('js')
-          ? 'JavaScript Mastery Course Playlist'
-          : cleanUrl.includes('dsa')
-          ? 'Data Structures & Algorithms Series'
-          : 'Custom YouTube Learning Playlist',
-        description: 'Auto-synchronized YouTube playlist for structured CS learning.',
-        thumbnail: 'https://img.youtube.com/vi/PkZNo7MFNFg/hqdefault.jpg',
-        channelName: 'CS Curriculum',
-        category: 'JavaScript',
+      // Fetch real YouTube Playlist metadata and videos
+      const meta = await fetchYouTubePlaylistMetadata(extractedPlId);
+      const category = detectCategoryFromTitleAndChannel(meta.title, meta.channelName);
+
+      const playlistVideos: VideoItem[] = meta.videos.map((v, idx) => ({
+        id: `pvid-${extractedPlId}-${idx}-${Date.now().toString().slice(-4)}`,
+        youtubeId: v.youtubeId,
+        youtubeUrl: `https://www.youtube.com/watch?v=${v.youtubeId}`,
+        title: v.title,
+        thumbnail: v.thumbnailUrl,
+        channelName: v.channelName || meta.channelName,
+        duration: 0,
+        category,
         difficulty: 'Intermediate',
-        totalVideos: 4,
+        tags: [category, 'Playlist'],
+        status: 'not-started',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        videos: [
-          {
-            id: `pvid-${Date.now()}-1`,
-            youtubeId: 'PkZNo7MFNFg',
-            youtubeUrl: 'https://www.youtube.com/watch?v=PkZNo7MFNFg',
-            title: '1. Core Fundamentals & Engine Overview',
-            thumbnail: 'https://img.youtube.com/vi/PkZNo7MFNFg/hqdefault.jpg',
-            channelName: 'CS Curriculum',
-            duration: 3600,
-            category: 'JavaScript',
-            difficulty: 'Beginner',
-            tags: ['JS', 'Fundamentals'],
-            status: 'not-started',
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          },
-          {
-            id: `pvid-${Date.now()}-2`,
-            youtubeId: 'hdI2bqOjy3c',
-            youtubeUrl: 'https://www.youtube.com/watch?v=hdI2bqOjy3c',
-            title: '2. Asynchronous Execution & Microtasks',
-            thumbnail: 'https://img.youtube.com/vi/hdI2bqOjy3c/hqdefault.jpg',
-            channelName: 'CS Curriculum',
-            duration: 2700,
-            category: 'JavaScript',
-            difficulty: 'Intermediate',
-            tags: ['Async', 'EventLoop'],
-            status: 'not-started',
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          },
-          {
-            id: `pvid-${Date.now()}-3`,
-            youtubeId: '30LWjhZ8V50',
-            youtubeUrl: 'https://www.youtube.com/watch?v=30LWjhZ8V50',
-            title: '3. Web APIs, DOM & Event Handling',
-            thumbnail: 'https://img.youtube.com/vi/30LWjhZ8V50/hqdefault.jpg',
-            channelName: 'CS Curriculum',
-            duration: 2400,
-            category: 'JavaScript',
-            difficulty: 'Intermediate',
-            tags: ['DOM', 'Events'],
-            status: 'not-started',
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          },
-        ],
+      }));
+
+      const newPlaylist: Playlist = {
+        id: `pl-${extractedPlId}-${Date.now().toString().slice(-4)}`,
+        playlistId: extractedPlId,
+        title: meta.title,
+        description: `Imported YouTube playlist with ${playlistVideos.length} video${playlistVideos.length === 1 ? '' : 's'}.`,
+        thumbnail: meta.thumbnailUrl,
+        channelName: meta.channelName,
+        category,
+        difficulty: 'Intermediate',
+        totalVideos: playlistVideos.length,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        videos: playlistVideos,
       };
 
       await savePlaylistToFirestore(newPlaylist);
+
+      // Save videos to videos collection so they are available in main library
+      for (const pVid of playlistVideos) {
+        await saveVideoToFirestore(pVid);
+      }
+
       setPlaylistUrlInput('');
-      setCreateMsg('Playlist added successfully!');
-      setTimeout(() => setCreateMsg(null), 3000);
+      setCreateMsg(`Successfully imported playlist "${meta.title}" (${playlistVideos.length} videos)!`);
+      setTimeout(() => setCreateMsg(null), 4000);
     } catch (err) {
       console.error('Failed to create playlist:', err);
-      setCreateMsg('Error creating playlist. Please try again.');
+      setCreateMsg('Error importing playlist. Please try again.');
     } finally {
       setIsCreating(false);
     }

@@ -19,6 +19,7 @@ import { PublicDataWarningBanner } from './components/PublicDataWarningBanner';
 import { AddVideoModal } from './components/AddVideoModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { GlobalPasteVideoAction } from './components/GlobalPasteVideoAction';
+import { GoalToast } from './components/GoalToast';
 
 import { DashboardPage } from './pages/DashboardPage';
 import { RecommendationsPage } from './pages/RecommendationsPage';
@@ -438,6 +439,9 @@ export function LearnVerseApp() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingVideo(null)}
       />
+
+      {/* Daily Learning Goal Celebration Toast */}
+      <GoalToast goal={goal} activityLogs={activityLogs} />
     </div>
   );
 }

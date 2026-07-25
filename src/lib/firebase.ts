@@ -332,6 +332,7 @@ export async function saveProgressToFirestore(progress: VideoProgress): Promise<
     id: logId,
     videoId: progress.videoId,
     secondsWatched: progress.watchedSeconds,
+    pausesCount: progress.pausesCount || 0,
     date: dateStr,
     timestamp: Date.now(),
   }, { merge: true });

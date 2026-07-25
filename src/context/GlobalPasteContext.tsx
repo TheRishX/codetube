@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { extractYouTubeId } from '../lib/youtube';
+import { extractYouTubeId, extractYouTubePlaylistId } from '../lib/youtube';
 
 interface GlobalPasteContextType {
   isModalOpen: boolean;
@@ -40,16 +40,21 @@ export const GlobalPasteProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       const clipboardText = e.clipboardData?.getData('text/plain') || '';
       const youtubeId = extractYouTubeId(clipboardText);
+      const playlistId = extractYouTubePlaylistId(clipboardText);
 
-      if (youtubeId) {
-        // If it's a YouTube URL, detect it globally!
+      if (youtubeId || playlistId) {
+        // If it's a YouTube URL or Playlist URL, detect it globally!
         if (!isInput || (activeElement && (activeElement as HTMLInputElement).placeholder?.toLowerCase().includes('youtube'))) {
           e.preventDefault();
         }
 
         setPastedUrl(clipboardText.trim());
         setIsModalOpen(true);
-        setLastPastedNotification(`Pasted YouTube Video detected! (${youtubeId})`);
+        if (playlistId) {
+          setLastPastedNotification(`Pasted YouTube Playlist detected! (${playlistId})`);
+        } else {
+          setLastPastedNotification(`Pasted YouTube Video detected! (${youtubeId})`);
+        }
 
         // Auto hide notification after 5 seconds
         setTimeout(() => {

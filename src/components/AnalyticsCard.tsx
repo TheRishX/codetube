@@ -1,7 +1,8 @@
 import React from 'react';
-import { Clock, CheckCircle2, Flame, Trophy, TrendingUp, BarChart2, Layers } from 'lucide-react';
+import { Clock, CheckCircle2, Flame, Trophy, TrendingUp, BarChart2, Layers, PauseCircle, Activity, Sparkles } from 'lucide-react';
 import { VideoItem, VideoProgress, ActivityLog } from '../types';
 import { CATEGORIES } from '../types';
+import { DrowsinessDetector } from './DrowsinessDetector';
 
 interface AnalyticsCardProps {
   videos: VideoItem[];
@@ -21,7 +22,17 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
     (acc, p) => acc + (p.watchedSeconds || 0),
     0
   );
-  const totalHours = (totalWatchedSecs / 3600).toFixed(1);
+
+  const hours = Math.floor(totalWatchedSecs / 3600);
+  const minutes = Math.floor((totalWatchedSecs % 3600) / 60);
+  const seconds = Math.floor(totalWatchedSecs % 60);
+  const formattedWatchTime = `${hours}h ${minutes}m ${seconds}s`;
+
+  // Total Pauses
+  const totalPauses = (Object.values(progressMap) as VideoProgress[]).reduce(
+    (acc, p) => acc + (p.pausesCount || 0),
+    0
+  ) + activityLogs.reduce((acc, l) => acc + (l.pausesCount || 0), 0);
 
   // Completed count
   const completedCount = videos.filter(
@@ -30,6 +41,9 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
 
   const totalVideos = videos.length;
   const overallCompletionRate = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
+
+  // Average pauses per video
+  const avgPausesPerVideo = totalVideos > 0 ? (totalPauses / totalVideos).toFixed(1) : '0.0';
 
   // Category stats
   const categoryStats = CATEGORIES.map((cat) => {
@@ -63,11 +77,13 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
     const log = activityLogs.find((l) => l.date === dateStr);
     const secs = log ? log.secondsWatched : 0;
     const mins = Math.round(secs / 60);
+    const pauses = log?.pausesCount || 0;
 
     return {
       dayName,
       dateStr,
       mins,
+      pauses,
     };
   });
 
@@ -75,44 +91,51 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top 4 Metric Cards */}
+      {/* Top Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Active Watch Time */}
         <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/80 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total Learning</p>
-              <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">{totalHours} Hours</h3>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total Active Watch Time</p>
+              <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">{formattedWatchTime}</h3>
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">● Counts only when playing</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/80 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Completed Videos</p>
-              <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">{completedCount} / {totalVideos}</h3>
-            </div>
-          </div>
-        </div>
-
+        {/* Total Pauses */}
         <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/80 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <Flame className="w-5 h-5 fill-current" />
+              <PauseCircle className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Current Streak</p>
-              <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">{streakCount} Days</h3>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Video Pauses Recorded</p>
+              <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">{totalPauses} Pauses</h3>
+              <span className="text-[10px] text-gray-400">Avg {avgPausesPerVideo} per video</span>
             </div>
           </div>
         </div>
 
+        {/* Current Streak */}
+        <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/80 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+              <Flame className="w-5 h-5 fill-current" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Study Streak</p>
+              <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">{streakCount} Days Active</h3>
+              <span className="text-[10px] text-gray-400">Daily learning goal active</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Completion Rate */}
         <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/80 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
@@ -120,23 +143,38 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Completion Rate</p>
-              <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">{overallCompletionRate}%</h3>
+              <h3 className="text-lg font-extrabold text-gray-900 dark:text-white">{overallCompletionRate}%</h3>
+              <span className="text-[10px] text-gray-400">{completedCount} of {totalVideos} completed</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Weekly Activity Visualizer Chart */}
+      {/* Sleep & Drowsiness AI Guard Widget */}
+      <DrowsinessDetector />
+
+      {/* Weekly Activity & Pause Patterns Chart */}
       <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200/80 dark:border-gray-700/80 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <BarChart2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              Weekly Learning Activity
+              Weekly Watch Time & Pause Patterns
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Minutes watched over the last 7 days
+              Active minutes watched and pauses logged over the last 7 days
             </p>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs font-semibold">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-indigo-600" />
+              <span className="text-gray-600 dark:text-gray-300">Active Watch Time (mins)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-amber-500" />
+              <span className="text-gray-600 dark:text-gray-300">Video Pauses</span>
+            </div>
           </div>
         </div>
 
@@ -146,11 +184,11 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
             const isToday = day.dateStr === today.toISOString().split('T')[0];
 
             return (
-              <div key={day.dateStr} className="flex flex-col items-center gap-2 h-full justify-end group">
-                <span className="text-[10px] font-semibold text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {day.mins}m
-                </span>
-                <div className="w-full max-w-[36px] bg-gray-100 dark:bg-gray-700/50 rounded-2xl h-full flex items-end p-1">
+              <div key={day.dateStr} className="flex flex-col items-center gap-2 h-full justify-end group relative">
+                <div className="text-[10px] font-bold text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-5 bg-black/80 text-white px-2 py-0.5 rounded-md whitespace-nowrap z-10">
+                  {day.mins} mins • {day.pauses} pauses
+                </div>
+                <div className="w-full max-w-[36px] bg-gray-100 dark:bg-gray-700/50 rounded-2xl h-full flex items-end p-1 relative">
                   <div
                     className={`w-full rounded-xl transition-all duration-500 ${
                       isToday

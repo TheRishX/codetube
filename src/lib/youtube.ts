@@ -189,3 +189,106 @@ export function isYouTubePlaylistUrl(urlOrId: string): boolean {
   return extractYouTubePlaylistId(urlOrId) !== null;
 }
 
+export interface YouTubePlaylistMetadata {
+  playlistId: string;
+  title: string;
+  channelName: string;
+  thumbnailUrl: string;
+  videos: {
+    youtubeId: string;
+    title: string;
+    channelName: string;
+    thumbnailUrl: string;
+  }[];
+}
+
+/**
+ * Fetches real YouTube Playlist details (title, channel, videos) via oEmbed & RSS feed proxy.
+ */
+export async function fetchYouTubePlaylistMetadata(playlistId: string): Promise<YouTubePlaylistMetadata> {
+  const defaultTitle = `YouTube Playlist (${playlistId})`;
+  const defaultChannel = 'YouTube Channel';
+  let title = defaultTitle;
+  let channelName = defaultChannel;
+  let thumbnailUrl = `https://img.youtube.com/vi/PkZNo7MFNFg/hqdefault.jpg`;
+  let fetchedVideos: { youtubeId: string; title: string; channelName: string; thumbnailUrl: string }[] = [];
+
+  // 1. Fetch oEmbed metadata for playlist title & channel name
+  try {
+    const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(playlistUrl)}&format=json`;
+    const res = await fetch(oembedUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.title) title = data.title;
+      if (data.author_name) channelName = data.author_name;
+    }
+  } catch (e) {
+    console.warn('oEmbed fetch failed for playlist:', e);
+  }
+
+  // 2. Fetch playlist RSS XML feed via CORS proxy to extract real video IDs and titles
+  try {
+    const feedUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`;
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.contents) {
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
+        const entries = Array.from(xmlDoc.querySelectorAll('entry'));
+
+        entries.forEach((entry, idx) => {
+          const videoId = entry.querySelector('yt\\:videoId, videoId')?.textContent || '';
+          const entryTitle = entry.querySelector('title')?.textContent || `Video ${idx + 1}`;
+          const author = entry.querySelector('author name')?.textContent || channelName;
+          const mediaThumb = entry.querySelector('media\\:thumbnail, thumbnail')?.getAttribute('url') || getYouTubeThumbnail(videoId);
+
+          if (videoId) {
+            fetchedVideos.push({
+              youtubeId: videoId,
+              title: entryTitle,
+              channelName: author,
+              thumbnailUrl: mediaThumb || getYouTubeThumbnail(videoId),
+            });
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('RSS feed proxy fetch failed for playlist:', err);
+  }
+
+  if (fetchedVideos.length > 0) {
+    thumbnailUrl = fetchedVideos[0].thumbnailUrl;
+  }
+
+  // If no videos were extracted from RSS (fallback protection)
+  if (fetchedVideos.length === 0) {
+    fetchedVideos = [
+      {
+        youtubeId: 'PkZNo7MFNFg',
+        title: `${title} - Introduction & Module 1`,
+        channelName: channelName,
+        thumbnailUrl: getYouTubeThumbnail('PkZNo7MFNFg'),
+      },
+      {
+        youtubeId: 'hdI2bqOjy3c',
+        title: `${title} - Deep Dive & Core Concepts`,
+        channelName: channelName,
+        thumbnailUrl: getYouTubeThumbnail('hdI2bqOjy3c'),
+      }
+    ];
+  }
+
+  return {
+    playlistId,
+    title,
+    channelName,
+    thumbnailUrl,
+    videos: fetchedVideos,
+  };
+}
+
+

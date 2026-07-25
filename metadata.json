@@ -1,6 +1,6 @@
 {
   "name": "CodeTube",
   "description": "YouTube-styled CS & IT coding tutorial platform with instant URL paste, automatic topic categorization, full CRUD, and filtered CS recommendations.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

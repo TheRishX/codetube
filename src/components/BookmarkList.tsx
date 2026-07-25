@@ -92,14 +92,10 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({
               key={bm.id}
               className="flex items-center justify-between p-3 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-200/80 dark:border-gray-700/60 hover:border-amber-400/50 transition-all group"
             >
-              <div
-                onClick={() => onJumpToTimestamp(bm.timestamp)}
-                className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
-              >
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-mono text-xs font-bold shrink-0">
-                  <Clock className="w-3 h-3" />
-                  {formatDuration(bm.timestamp)}
-                </span>
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold shrink-0">
+                  <Bookmark className="w-3.5 h-3.5 fill-current" />
+                </div>
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
                     {bm.label}
@@ -130,7 +126,7 @@ export const BookmarkList: React.FC<BookmarkListProps> = ({
           <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-sm w-full p-6 shadow-xl border border-gray-200 dark:border-gray-700 space-y-4">
             <div className="flex justify-between items-center">
               <h4 className="font-bold text-gray-900 dark:text-white text-base">
-                Add Bookmark at {formatDuration(Math.floor(getCurrentTimeSeconds()))}
+                Add Bookmark
               </h4>
               <button onClick={() => setIsOpenModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-4 h-4" />

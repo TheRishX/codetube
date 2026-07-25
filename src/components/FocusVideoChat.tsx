@@ -213,20 +213,6 @@ export const FocusVideoChat: React.FC<FocusVideoChatProps> = ({
                       : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200/80 dark:border-gray-700/80 rounded-tl-none shadow-xs'
                   }`}
                 >
-                  {msg.timestamp !== undefined && (
-                    <button
-                      onClick={() => onJumpToTimestamp(msg.timestamp!)}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono text-[10px] font-bold ${
-                        msg.sender === 'user'
-                          ? 'bg-indigo-700 text-indigo-100'
-                          : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-300'
-                      }`}
-                    >
-                      <Clock className="w-3 h-3" />
-                      <span>{formatDuration(msg.timestamp)}</span>
-                    </button>
-                  )}
-
                   <div className="whitespace-pre-wrap">{msg.text}</div>
 
                   {msg.sender === 'ai' && (
@@ -284,14 +270,11 @@ export const FocusVideoChat: React.FC<FocusVideoChatProps> = ({
             <textarea
               value={newNoteText}
               onChange={(e) => setNewNoteText(e.target.value)}
-              placeholder="Take a timestamped note in Zen Mode..."
+              placeholder="Take a note..."
               rows={2}
               className="w-full p-3 rounded-2xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 outline-hidden"
             />
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] font-mono text-gray-400">
-                Stamping at {formatDuration(Math.floor(getCurrentTimeSeconds()))}
-              </span>
+            <div className="flex justify-end items-center">
               <button
                 type="submit"
                 disabled={!newNoteText.trim()}
@@ -312,15 +295,7 @@ export const FocusVideoChat: React.FC<FocusVideoChatProps> = ({
                   key={n.id}
                   className="p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200/80 dark:border-gray-700/60 flex items-start justify-between gap-2"
                 >
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => onJumpToTimestamp(n.timestamp)}
-                      className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 font-mono text-[10px] font-bold"
-                    >
-                      {formatDuration(n.timestamp)}
-                    </button>
-                    <p className="text-xs text-gray-800 dark:text-gray-200">{n.content}</p>
-                  </div>
+                  <p className="text-xs text-gray-800 dark:text-gray-200">{n.content}</p>
                 </div>
               ))
             )}

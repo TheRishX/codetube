@@ -7,7 +7,7 @@ import { updateVideoInFirestore } from '../lib/firebase';
 interface VideoPlayerProps {
   video: VideoItem;
   initialProgress?: VideoProgress;
-  onProgressUpdate: (watchedSeconds: number, totalDuration: number) => void;
+  onProgressUpdate: (watchedSeconds: number, totalDuration: number, pauseCount?: number) => void;
   onMarkCompleted: () => void;
   isFocusMode: boolean;
   onToggleFocusMode: () => void;
@@ -30,12 +30,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const [currentTime, setCurrentTime] = useState(startSeconds);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [pauseCount, setPauseCount] = useState<number>(initialProgress?.pausesCount || 0);
+  const prevIsPlayingRef = useRef<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [realDuration, setRealDuration] = useState<number>(video.duration || 0);
 
   // Setup iframe embed URL with YouTube Parameters for JS API control
   const embedUrl = `https://www.youtube-nocookie.com/embed/${video.youtubeId}?enablejsapi=1&start=${Math.floor(startSeconds)}&autoplay=0&rel=0&modestbranding=1`;
+
+  // Track state transitions for pause detection
+  const handleStateUpdate = useCallback((playing: boolean) => {
+    if (prevIsPlayingRef.current && !playing) {
+      // Transition from playing -> paused
+      setPauseCount((prev) => {
+        const next = prev + 1;
+        onProgressUpdate(currentTime, realDuration || video.duration || 1800, next);
+        return next;
+      });
+    }
+    prevIsPlayingRef.current = playing;
+    setIsPlaying(playing);
+  }, [currentTime, realDuration, video.duration, onProgressUpdate]);
 
   // Function to send postMessage commands to YouTube iframe API
   const sendIframeCommand = useCallback((command: string, args: any[] = []) => {
@@ -67,16 +83,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       // Handle YouTube state change events (1 = PLAYING, 2 = PAUSED, 0 = ENDED, 3 = BUFFERING)
       if (data.event === 'onStateChange') {
         const state = data.info;
-        if (state === 1) setIsPlaying(true);
-        else if (state === 2 || state === 0) setIsPlaying(false);
+        if (state === 1) handleStateUpdate(true);
+        else if (state === 2 || state === 0) handleStateUpdate(false);
       }
 
       // Handle infoDelivery from YouTube player
       if (data.event === 'infoDelivery' && data.info) {
         if (typeof data.info.playerState === 'number') {
           const state = data.info.playerState;
-          if (state === 1) setIsPlaying(true);
-          else if (state === 2 || state === 0) setIsPlaying(false);
+          if (state === 1) handleStateUpdate(true);
+          else if (state === 2 || state === 0) handleStateUpdate(false);
         }
         if (typeof data.info.currentTime === 'number' && data.info.currentTime > 0) {
           setCurrentTime(data.info.currentTime);
@@ -206,6 +222,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* Control Bar */}
       <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-4 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        {/* Active Timer Status & Pauses indicator */}
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              isPlaying
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 animate-pulse'
+                : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isPlaying ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'
+              }`}
+            />
+            <span>{isPlaying ? 'Watch Timer Active (Video Playing)' : 'Timer Paused (Video Stopped)'}</span>
+          </div>
+
+          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 hidden sm:block">
+            <span className="font-bold text-gray-800 dark:text-gray-200">{pauseCount}</span> {pauseCount === 1 ? 'pause' : 'pauses'} logged
+          </div>
+        </div>
+
         {/* Speed & Focus & Mark Completed Controls */}
         <div className="flex items-center gap-2.5 flex-wrap ml-auto">
           {/* Speed selector */}
