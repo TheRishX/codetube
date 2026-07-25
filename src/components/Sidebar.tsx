@@ -6,12 +6,12 @@ import {
   BookmarkCheck,
   BarChart2,
   Settings,
-  HelpCircle,
-  ShieldCheck,
   Sparkles,
   Compass,
   ListVideo,
+  Sliders,
 } from 'lucide-react';
+import { AppLayoutPreferences } from '../types';
 
 interface SidebarProps {
   currentTab: string;
@@ -19,6 +19,9 @@ interface SidebarProps {
   videoCount: number;
   completedCount: number;
   playlistCount?: number;
+  preferences?: AppLayoutPreferences;
+  isCollapsed?: boolean;
+  onOpenCustomizer?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,8 +30,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   videoCount,
   completedCount,
   playlistCount = 0,
+  preferences,
+  isCollapsed = false,
+  onOpenCustomizer,
 }) => {
-  const navItems = [
+  const hiddenItems = preferences?.hiddenNavItems || [];
+
+  const allNavItems = [
     { id: 'dashboard', label: 'Home / Feed', icon: LayoutDashboard },
     { id: 'playlists', label: 'Playlists', icon: ListVideo, badge: playlistCount > 0 ? `${playlistCount}` : undefined, isHot: true },
     { id: 'recommendations', label: 'Recommendations', icon: Compass },
@@ -39,14 +47,73 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'settings', label: 'Settings & Docs', icon: Settings },
   ];
 
+  // Filter out hidden items configured by user
+  const visibleNavItems = allNavItems.filter((item) => !hiddenItems.includes(item.id));
 
+  // Collapsed Sidebar View (Icon-only mode)
+  if (isCollapsed) {
+    return (
+      <aside className="w-18 shrink-0 hidden lg:flex flex-col items-center border-r border-gray-200/80 dark:border-gray-800/80 bg-white/50 dark:bg-gray-900/50 min-h-[calc(100vh-4rem)] py-4 sticky top-16 self-start space-y-3 transition-all duration-300">
+        {visibleNavItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = currentTab === item.id || (item.id === 'library' && currentTab.startsWith('watch-'));
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className={`p-3 rounded-2xl relative group transition-all ${
+                isActive
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+              title={item.label}
+            >
+              <Icon className="w-5 h-5" />
+              {/* Floating Tooltip */}
+              <span className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 dark:bg-gray-800 text-white text-xs font-bold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+
+        {onOpenCustomizer && (
+          <button
+            onClick={onOpenCustomizer}
+            className="p-3 rounded-2xl text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 mt-auto transition-colors group relative"
+            title="Customize Sidebar"
+          >
+            <Sliders className="w-5 h-5" />
+            <span className="absolute left-full ml-3 px-2.5 py-1 bg-gray-900 dark:bg-gray-800 text-white text-xs font-bold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50">
+              Customize Layout
+            </span>
+          </button>
+        )}
+      </aside>
+    );
+  }
+
+  // Expanded Sidebar View
   return (
-    <aside className="w-64 shrink-0 hidden lg:block border-r border-gray-200/80 dark:border-gray-800/80 bg-white/50 dark:bg-gray-900/50 min-h-[calc(100vh-4rem)] p-4 sticky top-16 self-start">
+    <aside className="w-64 shrink-0 hidden lg:block border-r border-gray-200/80 dark:border-gray-800/80 bg-white/50 dark:bg-gray-900/50 min-h-[calc(100vh-4rem)] p-4 sticky top-16 self-start transition-all duration-300">
       <div className="space-y-1">
-        <div className="px-3 py-2 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-          Main Menu
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            Main Menu
+          </span>
+          {onOpenCustomizer && (
+            <button
+              onClick={onOpenCustomizer}
+              className="p-1 rounded-lg text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Edit & customize menu items"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        {navItems.map((item) => {
+
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id || (item.id === 'library' && currentTab.startsWith('watch-'));
 
@@ -107,6 +174,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
       </div>
+
+      {/* Customize Layout Shortcut Button at Sidebar Bottom */}
+      {onOpenCustomizer && (
+        <button
+          onClick={onOpenCustomizer}
+          className="mt-6 w-full py-2.5 px-3 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-400 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span>Customize Layout</span>
+        </button>
+      )}
     </aside>
   );
 };
+

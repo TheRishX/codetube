@@ -322,20 +322,35 @@ export async function deleteVideoFromFirestore(id: string): Promise<void> {
 }
 
 // Progress
-export async function saveProgressToFirestore(progress: VideoProgress): Promise<void> {
-  await setDoc(doc(db, 'progress', progress.videoId), progress);
+export async function saveProgressToFirestore(
+  progress: VideoProgress,
+  activeStudyDeltaSeconds: number = 0
+): Promise<void> {
+  await setDoc(doc(db, 'progress', progress.videoId), progress, { merge: true });
 
   // Record daily activity log for analytics & streak
   const dateStr = new Date().toISOString().split('T')[0];
   const logId = `log-${dateStr}-${progress.videoId}`;
-  await setDoc(doc(db, 'activityLogs', logId), {
-    id: logId,
-    videoId: progress.videoId,
-    secondsWatched: progress.watchedSeconds,
-    pausesCount: progress.pausesCount || 0,
-    date: dateStr,
-    timestamp: Date.now(),
-  }, { merge: true });
+  const logRef = doc(db, 'activityLogs', logId);
+
+  try {
+    const logSnap = await getDoc(logRef);
+    const existingSecs = logSnap.exists() ? (logSnap.data().secondsWatched || 0) : 0;
+    
+    // Add only actual active study time delta (seconds of real playing time)
+    const newStudySecs = existingSecs + activeStudyDeltaSeconds;
+
+    await setDoc(logRef, {
+      id: logId,
+      videoId: progress.videoId,
+      secondsWatched: Math.round(newStudySecs),
+      pausesCount: progress.pausesCount || 0,
+      date: dateStr,
+      timestamp: Date.now(),
+    }, { merge: true });
+  } catch (err) {
+    console.error('Failed to save activity log:', err);
+  }
 }
 
 // Notes

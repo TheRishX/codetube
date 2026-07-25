@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayCircle, Search, Menu, Flame, Sparkles, Youtube } from 'lucide-react';
+import { PlayCircle, Search, Menu, Flame, Sparkles, Youtube, Sliders } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { GlobalPasteVideoAction } from './GlobalPasteVideoAction';
 import { StudySessionTimer } from './StudySessionTimer';
@@ -8,6 +8,8 @@ interface HeaderProps {
   currentTab: string;
   onNavigate: (tab: string) => void;
   onToggleMobileMenu: () => void;
+  onToggleSidebarCollapse?: () => void;
+  onOpenCustomizer?: () => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   streakCount: number;
@@ -17,6 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentTab,
   onNavigate,
   onToggleMobileMenu,
+  onToggleSidebarCollapse,
+  onOpenCustomizer,
   searchQuery,
   onSearchChange,
   streakCount,
@@ -25,19 +29,32 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800/80 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
-          {/* Left Logo & Mobile Toggle */}
-          <div className="flex items-center gap-3">
+          {/* Left Logo & Hamburger Toggles */}
+          <div className="flex items-center gap-2">
+            {/* Desktop Hamburger Toggle */}
+            {onToggleSidebarCollapse && (
+              <button
+                onClick={onToggleSidebarCollapse}
+                className="hidden lg:flex p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Toggle sidebar expansion"
+                aria-label="Toggle sidebar"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Mobile Hamburger Toggle */}
             <button
               onClick={onToggleMobileMenu}
               className="lg:hidden p-2 rounded-xl text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              aria-label="Toggle navigation menu"
+              aria-label="Toggle mobile menu"
             >
               <Menu className="w-5 h-5" />
             </button>
 
             <button
               onClick={() => onNavigate('dashboard')}
-              className="flex items-center gap-2 group text-left"
+              className="flex items-center gap-2 group text-left ml-1"
             >
               <div className="w-10 h-7 rounded-xl bg-red-600 flex items-center justify-center text-white shadow-md shadow-red-600/30 group-hover:scale-105 transition-transform">
                 <Youtube className="w-5 h-5 fill-white text-white" />
@@ -70,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Right Controls: Study Session Timer, Streak, Paste Button, Theme Toggle */}
+          {/* Right Controls */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Study Session Timer */}
             <StudySessionTimer />
@@ -84,6 +101,18 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{streakCount} {streakCount === 1 ? 'Day' : 'Days'}</span>
             </div>
 
+            {/* Customize Layout button */}
+            {onOpenCustomizer && (
+              <button
+                onClick={onOpenCustomizer}
+                className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                title="Customize UI Layout"
+              >
+                <Sliders className="w-4 h-4 text-indigo-500" />
+                <span className="hidden xl:inline">Customize</span>
+              </button>
+            )}
+
             {/* Global Paste YouTube Button */}
             <GlobalPasteVideoAction variant="button" />
 
@@ -95,3 +124,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+

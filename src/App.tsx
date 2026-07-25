@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, onSnapshot, doc, getDocs } from 'firebase/firestore';
 import { db, seedInitialDataIfEmpty, deleteVideoFromFirestore, updateVideoInFirestore } from './lib/firebase';
-import { VideoItem, VideoProgress, VideoNote, VideoBookmark, LearningGoal, ActivityLog, Playlist } from './types';
+import { VideoItem, VideoProgress, VideoNote, VideoBookmark, LearningGoal, ActivityLog, Playlist, AppLayoutPreferences, DEFAULT_LAYOUT_PREFERENCES } from './types';
 
 import { ThemeProvider } from './context/ThemeContext';
 import { GlobalPasteProvider, useGlobalPaste } from './context/GlobalPasteContext';
@@ -20,6 +20,7 @@ import { AddVideoModal } from './components/AddVideoModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { GlobalPasteVideoAction } from './components/GlobalPasteVideoAction';
 import { GoalToast } from './components/GoalToast';
+import { CustomizeLayoutModal } from './components/CustomizeLayoutModal';
 
 import { DashboardPage } from './pages/DashboardPage';
 import { RecommendationsPage } from './pages/RecommendationsPage';
@@ -59,6 +60,38 @@ export function LearnVerseApp() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [deletingVideo, setDeletingVideo] = useState<VideoItem | null>(null);
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
+
+  // Layout Customization & Sidebar collapse state
+  const [layoutPreferences, setLayoutPreferences] = useState<AppLayoutPreferences>(() => {
+    try {
+      const saved = localStorage.getItem('codetube_layout_prefs');
+      return saved ? { ...DEFAULT_LAYOUT_PREFERENCES, ...JSON.parse(saved) } : DEFAULT_LAYOUT_PREFERENCES;
+    } catch {
+      return DEFAULT_LAYOUT_PREFERENCES;
+    }
+  });
+
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(
+    () => layoutPreferences.sidebarCollapsed || false
+  );
+  const [isCustomizerOpen, setIsCustomizerOpen] = useState(false);
+
+  const handleSavePreferences = useCallback((newPrefs: AppLayoutPreferences) => {
+    setLayoutPreferences(newPrefs);
+    try {
+      localStorage.setItem('codetube_layout_prefs', JSON.stringify(newPrefs));
+    } catch (e) {
+      console.error('Failed to save layout preferences', e);
+    }
+  }, []);
+
+  const handleToggleSidebarCollapse = useCallback(() => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      handleSavePreferences({ ...layoutPreferences, sidebarCollapsed: next });
+      return next;
+    });
+  }, [layoutPreferences, handleSavePreferences]);
 
   // Zen Mode state
   const [isZenMode, setIsZenMode] = useState(false);
@@ -268,6 +301,8 @@ export function LearnVerseApp() {
           currentTab={currentTab}
           onNavigate={handleNavigate}
           onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          onToggleSidebarCollapse={handleToggleSidebarCollapse}
+          onOpenCustomizer={() => setIsCustomizerOpen(true)}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           streakCount={streakCount}
@@ -284,9 +319,12 @@ export function LearnVerseApp() {
             videoCount={videos.length}
             completedCount={completedCount}
             playlistCount={playlists.length}
+            preferences={layoutPreferences}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={handleToggleSidebarCollapse}
+            onOpenCustomizer={() => setIsCustomizerOpen(true)}
           />
         )}
-
 
         {/* Mobile Nav Drawer */}
         {!isWatchingAndZen && (
@@ -295,6 +333,7 @@ export function LearnVerseApp() {
             onNavigate={handleNavigate}
             isOpen={isMobileMenuOpen}
             onClose={() => setIsMobileMenuOpen(false)}
+            preferences={layoutPreferences}
           />
         )}
 
@@ -313,6 +352,8 @@ export function LearnVerseApp() {
               onArchiveToggle={handleArchiveToggle}
               onDeleteRequest={(v) => setDeletingVideo(v)}
               onEditVideoRequest={(v) => setEditingVideo(v)}
+              layoutPreferences={layoutPreferences}
+              onOpenCustomizer={() => setIsCustomizerOpen(true)}
             />
           )}
 
@@ -438,6 +479,14 @@ export function LearnVerseApp() {
         variant="danger"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingVideo(null)}
+      />
+
+      {/* Modular Layout & Customizer Modal */}
+      <CustomizeLayoutModal
+        isOpen={isCustomizerOpen}
+        onClose={() => setIsCustomizerOpen(false)}
+        preferences={layoutPreferences}
+        onSavePreferences={handleSavePreferences}
       />
 
       {/* Daily Learning Goal Celebration Toast */}

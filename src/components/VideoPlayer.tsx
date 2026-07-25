@@ -50,7 +50,7 @@ const loadYouTubeIframeApi = (): Promise<any> => {
 interface VideoPlayerProps {
   video: VideoItem;
   initialProgress?: VideoProgress;
-  onProgressUpdate: (watchedSeconds: number, totalDuration: number, pauseCount?: number) => void;
+  onProgressUpdate: (watchedSeconds: number, totalDuration: number, pauseCount?: number, activeStudySecondsDelta?: number) => void;
   onMarkCompleted: () => void;
   isFocusMode: boolean;
   onToggleFocusMode: () => void;
@@ -78,6 +78,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [pauseCount, setPauseCount] = useState<number>(initialProgress?.pausesCount || 0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [realDuration, setRealDuration] = useState<number>(video.duration || 0);
+
+  // Ref to track wall-clock timestamp when video is actively playing for real study timer
+  const lastActiveTickRef = useRef<number | null>(null);
 
   // Keep latest callbacks in refs to avoid stale closures inside YT event handlers
   const onProgressUpdateRef = useRef(onProgressUpdate);
@@ -139,28 +142,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             // 1 = PLAYING
             if (state === YT.PlayerState.PLAYING) {
               setIsPlaying(true);
+              lastActiveTickRef.current = Date.now();
               const cur = player.getCurrentTime() || 0;
               const dur = player.getDuration() || video.duration || 0;
               setCurrentTime(cur);
               if (dur > 0) setRealDuration(dur);
-              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration);
+              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration, undefined, 0);
             }
             // 2 = PAUSED
             else if (state === YT.PlayerState.PAUSED) {
               setIsPlaying(false);
+              lastActiveTickRef.current = null;
               const cur = player.getCurrentTime() || 0;
               const dur = player.getDuration() || video.duration || 0;
               setCurrentTime(cur);
               const nextPauseCount = pauseCountRef.current + 1;
               setPauseCount(nextPauseCount);
-              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration, nextPauseCount);
+              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration, nextPauseCount, 0);
             }
             // 0 = ENDED
             else if (state === YT.PlayerState.ENDED) {
               setIsPlaying(false);
+              lastActiveTickRef.current = null;
               const dur = player.getDuration() || video.duration || 0;
               setCurrentTime(dur);
-              onProgressUpdateRef.current(dur, dur);
+              onProgressUpdateRef.current(dur, dur, undefined, 0);
               onMarkCompletedRef.current();
             }
           },
@@ -171,12 +177,26 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       pollInterval = setInterval(() => {
         if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
           try {
+            const now = Date.now();
             const state = playerRef.current.getPlayerState();
             const playing = state === 1; // YT.PlayerState.PLAYING
             setIsPlaying(playing);
 
             const cur = playerRef.current.getCurrentTime();
             const dur = playerRef.current.getDuration();
+
+            let activeStudyDelta = 0;
+            if (playing) {
+              if (lastActiveTickRef.current !== null) {
+                const elapsedMs = now - lastActiveTickRef.current;
+                if (elapsedMs > 0 && elapsedMs < 3000) {
+                  activeStudyDelta = elapsedMs / 1000;
+                }
+              }
+              lastActiveTickRef.current = now;
+            } else {
+              lastActiveTickRef.current = null;
+            }
 
             if (typeof cur === 'number' && !isNaN(cur)) {
               setCurrentTime(cur);
@@ -187,13 +207,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
             // Periodically auto-sync progress while video is actively playing
             if (playing && typeof cur === 'number' && !isNaN(cur)) {
-              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration);
+              onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration, undefined, activeStudyDelta);
             }
           } catch {
             // Player initializing or detached
           }
         }
-      }, 500);
+      }, 1000);
     });
 
     return () => {
@@ -206,7 +226,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           const cur = playerRef.current.getCurrentTime();
           const dur = playerRef.current.getDuration();
           if (typeof cur === 'number' && cur >= 0) {
-            onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration);
+            onProgressUpdateRef.current(cur, dur > 0 ? dur : video.duration, undefined, 0);
           }
           playerRef.current.destroy();
         } catch {

@@ -71,11 +71,19 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
   const getCurrentTimeRef = useRef<(() => number) | null>(null);
   const playerSeekRef = useRef<((seconds: number) => void) | null>(null);
 
-  // Auto-save progress handler throttled
-  const handleProgressUpdate = async (watchedSeconds: number, totalDuration: number, pauseCount?: number) => {
+  // Auto-save progress handler
+  const handleProgressUpdate = async (
+    watchedSeconds: number,
+    totalDuration: number,
+    pauseCount?: number,
+    activeStudySecondsDelta: number = 0
+  ) => {
     const duration = totalDuration || video.duration || 1800;
     const percentage = Math.min(100, Math.round((watchedSeconds / duration) * 100));
     const completionStatus = percentage >= 95 ? 'completed' : percentage > 0 ? 'in-progress' : 'not-started';
+
+    const currentActual = progress?.actualStudySeconds || 0;
+    const updatedActual = currentActual + activeStudySecondsDelta;
 
     const updatedProg: VideoProgress = {
       id: video.id,
@@ -87,10 +95,11 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
       lastWatchedAt: Date.now(),
       completedAt: percentage >= 95 ? Date.now() : progress?.completedAt || null,
       pausesCount: typeof pauseCount === 'number' ? pauseCount : progress?.pausesCount || 0,
+      actualStudySeconds: Math.round(updatedActual),
     };
 
     try {
-      await saveProgressToFirestore(updatedProg);
+      await saveProgressToFirestore(updatedProg, activeStudySecondsDelta);
       if (percentage >= 95 && video.status !== 'completed') {
         await updateVideoInFirestore(video.id, { status: 'completed' });
       } else if (percentage > 0 && video.status === 'not-started') {
@@ -154,9 +163,71 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
   const videoBookmarks = bookmarks.filter((b) => b.videoId === video.id);
 
   const [activeSidebarTab, setActiveSidebarTab] = useState<'summary' | 'notes' | 'bookmarks' | 'chat'>('summary');
+  const [showZenControls, setShowZenControls] = useState(true);
+
+  // ESC key listener to exit distraction free mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isZenMode) {
+        toggleZenMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isZenMode, toggleZenMode]);
+
+  // Distraction-Free Theater Mode overlay
+  if (isZenMode) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex flex-col justify-center items-center p-2 sm:p-6 overflow-hidden animate-in fade-in duration-300">
+        {/* Floating Hover Controls Top Bar */}
+        <div
+          onMouseEnter={() => setShowZenControls(true)}
+          className={`absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-2.5 rounded-full bg-gray-900/90 text-white backdrop-blur-md border border-gray-700/80 shadow-2xl transition-all duration-300 ${
+            showZenControls ? 'opacity-100 translate-y-0' : 'opacity-20 hover:opacity-100 translate-y-0'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Focus className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold">Distraction-Free Mode</span>
+          </div>
+
+          <span className="text-gray-500 text-xs">|</span>
+
+          <span className="text-[11px] text-gray-400 font-mono hidden sm:inline">Press ESC to exit</span>
+
+          <button
+            onClick={toggleZenMode}
+            className="px-3 py-1 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors"
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            <span>Exit Theater</span>
+          </button>
+        </div>
+
+        {/* Video Player Canvas */}
+        <div className="w-full max-w-6xl aspect-video rounded-2xl overflow-hidden shadow-2xl border border-gray-800">
+          <VideoPlayer
+            video={video}
+            initialProgress={progress}
+            onProgressUpdate={handleProgressUpdate}
+            onMarkCompleted={handleMarkCompleted}
+            isFocusMode={isZenMode}
+            onToggleFocusMode={toggleZenMode}
+            onGetCurrentTime={(getter) => {
+              getCurrentTimeRef.current = getter;
+            }}
+            onSeekToReady={(seekFn) => {
+              playerSeekRef.current = seekFn;
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={`space-y-6 animate-in fade-in duration-300 ${isZenMode ? 'max-w-7xl mx-auto py-2' : ''}`}>
+    <div className="space-y-6 animate-in fade-in duration-300">
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between gap-4">
         <button

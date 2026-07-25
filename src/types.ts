@@ -32,6 +32,7 @@ export interface VideoProgress {
   lastWatchedAt: number;
   completedAt: number | null;
   pausesCount?: number;
+  actualStudySeconds?: number;
 }
 
 export interface VideoNote {
@@ -108,6 +109,40 @@ export type ViewMode = 'grid' | 'list';
 
 
 export type SortOption = 'recent' | 'newest' | 'oldest' | 'title' | 'progress' | 'duration';
+
+export interface AppLayoutPreferences {
+  hiddenNavItems: string[];
+  sidebarCollapsed: boolean;
+  categoryOrder: string[];
+  hiddenCategories: string[];
+  showLastPlayedOnDashboard: boolean;
+  showLibraryOnDashboard: boolean;
+}
+
+export const DEFAULT_LAYOUT_PREFERENCES: AppLayoutPreferences = {
+  hiddenNavItems: [],
+  sidebarCollapsed: false,
+  categoryOrder: [
+    'mern-stack',
+    'javascript',
+    'react',
+    'backend',
+    'databases',
+    'devops',
+    'networks',
+    'os',
+    'system-design',
+    'dsa',
+    'languages',
+    'cybersecurity',
+    'git',
+    'projects',
+    'careers',
+  ],
+  hiddenCategories: [],
+  showLastPlayedOnDashboard: true,
+  showLibraryOnDashboard: true,
+};
 
 export interface FilterOptions {
   searchQuery: string;

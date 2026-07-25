@@ -17,11 +17,13 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
   activityLogs,
   streakCount,
 }) => {
-  // Compute total watched seconds
-  const totalWatchedSecs = (Object.values(progressMap) as VideoProgress[]).reduce(
-    (acc, p) => acc + (p.watchedSeconds || 0),
-    0
-  );
+  // Compute total actual active study seconds from daily activity logs or actualStudySeconds
+  const totalWatchedSecs = activityLogs.length > 0
+    ? activityLogs.reduce((acc, l) => acc + (l.secondsWatched || 0), 0)
+    : (Object.values(progressMap) as VideoProgress[]).reduce(
+        (acc, p) => acc + (p.actualStudySeconds || p.watchedSeconds || 0),
+        0
+      );
 
   const hours = Math.floor(totalWatchedSecs / 3600);
   const minutes = Math.floor((totalWatchedSecs % 3600) / 60);
@@ -51,10 +53,10 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
     const catCompleted = catVideos.filter(
       (v) => v.status === 'completed' || progressMap[v.id]?.percentageCompleted === 100
     ).length;
-    const catTotalSecs = catVideos.reduce(
-      (acc, v) => acc + (progressMap[v.id]?.watchedSeconds || 0),
-      0
-    );
+    const catTotalSecs = catVideos.reduce((acc, v) => {
+      const p = progressMap[v.id];
+      return acc + (p?.actualStudySeconds || 0);
+    }, 0);
 
     return {
       categoryName: cat.name,

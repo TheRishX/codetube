@@ -9,15 +9,18 @@ import {
   X,
   Youtube,
   Compass,
+  ListVideo,
 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { GlobalPasteVideoAction } from './GlobalPasteVideoAction';
+import { AppLayoutPreferences } from '../types';
 
 interface MobileNavigationProps {
   currentTab: string;
   onNavigate: (tab: string) => void;
   isOpen: boolean;
   onClose: () => void;
+  preferences?: AppLayoutPreferences;
 }
 
 export const MobileNavigation: React.FC<MobileNavigationProps> = ({
@@ -25,20 +28,23 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
   onNavigate,
   isOpen,
   onClose,
+  preferences,
 }) => {
-  const bottomNavItems = [
+  const hiddenItems = preferences?.hiddenNavItems || [];
+
+  const allNavItems = [
     { id: 'dashboard', label: 'Feed', icon: LayoutDashboard },
+    { id: 'playlists', label: 'Playlists', icon: ListVideo },
     { id: 'recommendations', label: 'Recs', icon: Compass },
     { id: 'library', label: 'Library', icon: Video },
     { id: 'categories', label: 'Topics', icon: Grid },
     { id: 'notes', label: 'Notes', icon: BookmarkCheck },
-  ];
-
-  const fullNavItems = [
-    ...bottomNavItems,
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'settings', label: 'Settings & Docs', icon: Settings },
   ];
+
+  const visibleItems = allNavItems.filter((item) => !hiddenItems.includes(item.id));
+  const bottomNavItems = visibleItems.slice(0, 5);
 
   return (
     <>
@@ -70,7 +76,7 @@ export const MobileNavigation: React.FC<MobileNavigationProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                {fullNavItems.map((item) => {
+                {visibleItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = currentTab === item.id;
                   return (
