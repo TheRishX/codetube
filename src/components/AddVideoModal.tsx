@@ -6,10 +6,12 @@ import { extractYouTubeId, fetchYouTubeMetadata, getYouTubeThumbnail, isValidYou
 import { saveVideoToFirestore } from '../lib/firebase';
 
 interface AddVideoModalProps {
+  existingVideos?: VideoItem[];
   onVideoAdded?: (video: VideoItem) => void;
+  onSelectVideo?: (video: VideoItem) => void;
 }
 
-export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) => {
+export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [], onVideoAdded, onSelectVideo }) => {
   const { isModalOpen, pastedUrl, closeAddVideoModal: closeModal } = useGlobalPaste();
 
   const [urlInput, setUrlInput] = useState('');
@@ -20,11 +22,11 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
   const [difficulty, setDifficulty] = useState<Difficulty>('Beginner');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
-  const [durationInput, setDurationInput] = useState('30m');
 
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [duplicateVideo, setDuplicateVideo] = useState<VideoItem | null>(null);
   const [successVideo, setSuccessVideo] = useState<VideoItem | null>(null);
 
   useEffect(() => {
@@ -37,10 +39,18 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
   const handleProcessUrl = async (url: string) => {
     setErrorMsg(null);
     setSuccessVideo(null);
+    setDuplicateVideo(null);
     const id = extractYouTubeId(url);
 
     if (id) {
       setExtractedId(id);
+
+      // Check for duplicate in existing library
+      const existing = existingVideos.find((v) => v.youtubeId === id);
+      if (existing) {
+        setDuplicateVideo(existing);
+      }
+
       setIsFetchingMeta(true);
       try {
         const meta = await fetchYouTubeMetadata(id);
@@ -85,11 +95,15 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
       return;
     }
 
+    if (duplicateVideo) {
+      setErrorMsg(`This video is already in your library as "${duplicateVideo.title}".`);
+      return;
+    }
+
     setIsSaving(true);
     setErrorMsg(null);
 
     try {
-      const parsedDuration = parseDurationToSeconds(durationInput) || 1800; // default 30 mins
       const videoId = `vid-${extractedId}-${Date.now().toString().slice(-4)}`;
 
       const newVideo = await saveVideoToFirestore({
@@ -99,7 +113,7 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
         title: title.trim() || `YouTube Video (${extractedId})`,
         thumbnail: getYouTubeThumbnail(extractedId),
         channelName: channelName.trim() || 'Unknown Channel',
-        duration: parsedDuration,
+        duration: 0, // Auto-calculated from player when loaded
         category,
         difficulty,
         tags: tags.length > 0 ? tags : [category, difficulty],
@@ -125,8 +139,8 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
     setDifficulty('Beginner');
     setTags([]);
     setTagInput('');
-    setDurationInput('30m');
     setErrorMsg(null);
+    setDuplicateVideo(null);
     setSuccessVideo(null);
   };
 
@@ -268,6 +282,32 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
               </div>
             </div>
 
+            {/* Duplicate Video Banner if present */}
+            {duplicateVideo && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 text-xs">
+                <div className="space-y-0.5">
+                  <p className="font-bold text-amber-900 dark:text-amber-200">
+                    Video Already Saved in Library!
+                  </p>
+                  <p className="text-amber-700 dark:text-amber-300 font-medium">
+                    "{duplicateVideo.title}"
+                  </p>
+                </div>
+                {onSelectVideo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectVideo(duplicateVideo);
+                      handleClose();
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0 transition-colors shadow-xs"
+                  >
+                    Open Video
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Category & Difficulty */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -303,47 +343,32 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ onVideoAdded }) =>
               </div>
             </div>
 
-            {/* Duration & Tags */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Estimated Duration
-                </label>
+            {/* Tags */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                Add Tags
+              </label>
+              <div className="flex gap-2">
                 <input
                   type="text"
-                  value={durationInput}
-                  onChange={(e) => setDurationInput(e.target.value)}
-                  placeholder="e.g. 45m or 1h 30m"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddTag();
+                    }
+                  }}
+                  placeholder="e.g. Hooks, Async"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Add Tags
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                    }}
-                    placeholder="e.g. Hooks, Async"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddTag}
-                    className="px-3 py-2.5 rounded-xl bg-gray-200 dark:bg-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 shrink-0"
-                  >
-                    Add
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleAddTag}
+                  className="px-3 py-2.5 rounded-xl bg-gray-200 dark:bg-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 shrink-0"
+                >
+                  Add
+                </button>
               </div>
             </div>
 

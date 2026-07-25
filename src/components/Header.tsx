@@ -2,6 +2,7 @@ import React from 'react';
 import { PlayCircle, Search, Menu, Flame, Sparkles, Youtube } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { GlobalPasteVideoAction } from './GlobalPasteVideoAction';
+import { StudySessionTimer } from './StudySessionTimer';
 
 interface HeaderProps {
   currentTab: string;
@@ -69,11 +70,14 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Right Controls: Streak, Paste Button, Theme Toggle */}
+          {/* Right Controls: Study Session Timer, Streak, Paste Button, Theme Toggle */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Study Session Timer */}
+            <StudySessionTimer />
+
             {/* Streak Counter Badge */}
             <div
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-bold shrink-0 hidden sm:flex"
               title={`${streakCount} day learning streak!`}
             >
               <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />

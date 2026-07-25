@@ -71,14 +71,12 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const parsedDuration = parseDurationToSeconds(durationInput) || video.duration;
       const updates: Partial<VideoItem> = {
         title: title.trim(),
         channelName: channelName.trim() || 'Unknown Channel',
         category,
         difficulty,
         status,
-        duration: parsedDuration,
         tags,
       };
 
@@ -237,46 +235,32 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
             </div>
           </div>
 
-          {/* Duration & Tags */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Duration (e.g. 45m or 1h 30m)
-              </label>
+          {/* Tags */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+              Add Tag
+            </label>
+            <div className="flex gap-2">
               <input
                 type="text"
-                value={durationInput}
-                onChange={(e) => setDurationInput(e.target.value)}
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddTag();
+                  }
+                }}
+                placeholder="e.g. Hooks, Async"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
               />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Add Tag
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddTag();
-                    }
-                  }}
-                  placeholder="e.g. Hooks, Async"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddTag}
-                  className="px-3 py-2.5 rounded-xl bg-gray-200 dark:bg-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 shrink-0"
-                >
-                  Add
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleAddTag}
+                className="px-3 py-2.5 rounded-xl bg-gray-200 dark:bg-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 shrink-0"
+              >
+                Add
+              </button>
             </div>
           </div>
 

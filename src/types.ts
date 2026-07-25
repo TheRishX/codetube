@@ -86,6 +86,7 @@ export interface Playlist {
   difficulty: Difficulty;
   totalVideos: number;
   videos: VideoItem[];
+  lastPlayedVideoId?: string;
   lastWatchedVideoId?: string;
   createdAt: number;
   updatedAt: number;

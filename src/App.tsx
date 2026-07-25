@@ -302,6 +302,7 @@ export function LearnVerseApp() {
           {currentTab === 'dashboard' && (
             <DashboardPage
               videos={videos}
+              playlists={playlists}
               progressMap={progressMap}
               watchLaterIds={watchLaterIds}
               onToggleWatchLater={handleToggleWatchLater}
@@ -407,7 +408,11 @@ export function LearnVerseApp() {
       </div>
 
       {/* Global Add/Paste Video Modal */}
-      <AddVideoModal onVideoAdded={(v) => handleSelectVideo(v)} />
+      <AddVideoModal
+        existingVideos={videos}
+        onVideoAdded={(v) => handleSelectVideo(v)}
+        onSelectVideo={(v) => handleSelectVideo(v)}
+      />
 
       {/* Edit Video Modal */}
       <EditVideoModal

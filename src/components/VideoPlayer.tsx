@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Play, Pause, CheckCircle2, RotateCcw, Maximize2, Volume2, VolumeX, FastForward, Focus } from 'lucide-react';
+import { CheckCircle2, RotateCcw, Maximize2, Volume2, VolumeX, FastForward, Focus } from 'lucide-react';
 import { VideoItem, VideoProgress } from '../types';
 import { formatDuration } from '../lib/youtube';
+import { updateVideoInFirestore } from '../lib/firebase';
 
 interface VideoPlayerProps {
   video: VideoItem;
@@ -83,7 +84,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (typeof data.info.duration === 'number' && data.info.duration > 0) {
           const dur = Math.round(data.info.duration);
           setRealDuration(dur);
-          if (dur !== video.duration) {
+          if (dur > 0 && dur !== video.duration) {
+            updateVideoInFirestore(video.id, { duration: dur }).catch((err) =>
+              console.error('Failed to update duration in Firestore:', err)
+            );
             onProgressUpdate(currentTime, dur);
           }
         }
@@ -200,35 +204,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         />
       </div>
 
-      {/* Control Bar & Progress Sync */}
+      {/* Control Bar */}
       <div className="bg-white dark:bg-gray-800/90 rounded-2xl p-4 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              if (isPlaying) {
-                sendIframeCommand('pauseVideo');
-                setIsPlaying(false);
-              } else {
-                sendIframeCommand('playVideo');
-                setIsPlaying(true);
-              }
-            }}
-            className="p-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-colors focus:ring-2 focus:ring-indigo-500"
-            title={isPlaying ? 'Pause' : 'Play'}
-            aria-label={isPlaying ? 'Pause video' : 'Play video'}
-          >
-            {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-          </button>
-
-          <div className="text-xs font-mono font-semibold text-gray-700 dark:text-gray-300">
-            <span>{formatDuration(currentTime)}</span>
-            <span className="text-gray-400"> / </span>
-            <span>{formatDuration(effectiveDuration)}</span>
-          </div>
-        </div>
-
         {/* Speed & Focus & Mark Completed Controls */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2.5 flex-wrap ml-auto">
           {/* Speed selector */}
           <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700/60 p-1 rounded-xl text-xs font-semibold text-gray-700 dark:text-gray-300">
             {[1, 1.25, 1.5, 2].map((speed) => (

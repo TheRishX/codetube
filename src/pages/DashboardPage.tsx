@@ -15,14 +15,20 @@ import {
   Clock,
   Flame,
   Layers,
-  ListVideo
+  ListVideo,
+  Check,
+  Compass
 } from 'lucide-react';
-import { VideoItem, VideoProgress, CATEGORIES } from '../types';
+import { VideoItem, VideoProgress, Playlist, CATEGORIES } from '../types';
 import { VideoCard } from '../components/VideoCard';
 import { useGlobalPaste } from '../context/GlobalPasteContext';
+import { RECOMMENDED_CS_VIDEOS, RecommendedVideo } from './RecommendationsPage';
+import { saveVideoToFirestore } from '../lib/firebase';
+import { formatDuration, getYouTubeThumbnail } from '../lib/youtube';
 
 interface DashboardPageProps {
   videos: VideoItem[];
+  playlists?: Playlist[];
   progressMap: Record<string, VideoProgress>;
   watchLaterIds?: string[];
   onToggleWatchLater?: (video: VideoItem) => void;
@@ -36,6 +42,7 @@ interface DashboardPageProps {
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   videos,
+  playlists = [],
   progressMap,
   watchLaterIds = [],
   onToggleWatchLater,
@@ -57,6 +64,54 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const watchLaterVideos = useMemo(() => {
     return videos.filter((v) => watchLaterIds.includes(v.id));
   }, [videos, watchLaterIds]);
+
+  // Active Playlist to resume
+  const resumePlaylistInfo = useMemo(() => {
+    if (!playlists || playlists.length === 0) return null;
+    
+    // Find playlist with lastPlayedVideoId or lastWatchedVideoId
+    const pl = playlists.find((p) => p.lastPlayedVideoId || p.lastWatchedVideoId) || playlists[0];
+    if (!pl || !pl.videos || pl.videos.length === 0) return null;
+
+    const lastVidId = pl.lastPlayedVideoId || pl.lastWatchedVideoId;
+    const activeVid = pl.videos.find((v) => v.id === lastVidId) || pl.videos[0];
+
+    return {
+      playlist: pl,
+      video: activeVid,
+    };
+  }, [playlists]);
+
+  // Suggested Videos from Recommendations, filtering out videos already in user's library
+  const suggestedVideos = useMemo(() => {
+    const userYoutubeIds = new Set(videos.map((v) => v.youtubeId));
+    return RECOMMENDED_CS_VIDEOS.filter((rec) => !userYoutubeIds.has(rec.youtubeId)).slice(0, 4);
+  }, [videos]);
+
+  const handleQuickAddSuggested = async (rec: RecommendedVideo) => {
+    const newVid: VideoItem = {
+      id: `vid-rec-${Date.now()}`,
+      youtubeId: rec.youtubeId,
+      youtubeUrl: rec.youtubeUrl,
+      title: rec.title,
+      thumbnail: getYouTubeThumbnail(rec.youtubeId),
+      channelName: rec.channelName,
+      duration: rec.duration,
+      category: rec.category,
+      difficulty: rec.difficulty,
+      tags: rec.tags,
+      status: 'in-progress',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    try {
+      await saveVideoToFirestore(newVid);
+      onSelectVideo(newVid);
+    } catch (err) {
+      console.error('Failed to add suggested video to library:', err);
+    }
+  };
 
   // Filter out archived videos for homepage feed by default unless selected
   const activeVideos = useMemo(() => {
@@ -216,6 +271,52 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      {/* Resume Playlist Banner (if active playlist exists) */}
+      {resumePlaylistInfo && (
+        <div className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white rounded-3xl shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+          <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-white/5 skew-x-12 pointer-events-none" />
+          <div className="relative z-10 flex items-center gap-4">
+            <img
+              src={resumePlaylistInfo.playlist.thumbnail || getYouTubeThumbnail(resumePlaylistInfo.video.youtubeId)}
+              alt={resumePlaylistInfo.playlist.title}
+              className="w-20 aspect-video rounded-2xl object-cover border border-white/20 shadow-md shrink-0 hidden xs:block"
+            />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-[10px] font-bold uppercase tracking-wider">
+                  Resume Playlist
+                </span>
+                <span className="text-xs text-indigo-200/80 font-medium">
+                  {resumePlaylistInfo.playlist.channelName}
+                </span>
+              </div>
+              <h3 className="text-base font-extrabold line-clamp-1">
+                {resumePlaylistInfo.playlist.title}
+              </h3>
+              <p className="text-xs text-indigo-100/90 line-clamp-1 font-medium">
+                Next up: <span className="text-white font-semibold">{resumePlaylistInfo.video.title}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="relative z-10 flex items-center gap-3 self-end sm:self-center shrink-0">
+            <button
+              onClick={() => onSelectVideo(resumePlaylistInfo.video)}
+              className="px-5 py-2.5 rounded-xl bg-white text-indigo-900 font-extrabold text-xs shadow-lg hover:bg-indigo-50 transition-all flex items-center gap-2"
+            >
+              <Play className="w-4 h-4 fill-indigo-900" />
+              <span>Resume Course</span>
+            </button>
+            <button
+              onClick={() => onNavigate('playlists')}
+              className="px-3.5 py-2.5 rounded-xl bg-indigo-700/60 hover:bg-indigo-700 text-white font-semibold text-xs transition-all"
+            >
+              All Playlists
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Watch Later Queue Hero Banner (if videos are in queue) */}
       {watchLaterVideos.length > 0 && (
         <div className="p-5 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-indigo-600/15 border border-amber-500/30 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
@@ -246,6 +347,66 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <Play className="w-4 h-4 fill-white" />
               <span>Play All ({watchLaterVideos.length})</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Suggested for You Section (from Recommendations logic, filtering out library videos) */}
+      {suggestedVideos.length > 0 && (
+        <div className="space-y-3 bg-indigo-50/60 dark:bg-indigo-950/20 p-5 rounded-3xl border border-indigo-100 dark:border-indigo-900/40">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Compass className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <h3 className="font-extrabold text-gray-900 dark:text-white text-base">
+                Suggested for You
+              </h3>
+              <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
+                Curated CS Courses
+              </span>
+            </div>
+            <button
+              onClick={() => onNavigate('recommendations')}
+              className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+            >
+              <span>Explore All</span>
+              <Sparkles className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {suggestedVideos.map((rec) => (
+              <div
+                key={rec.id}
+                className="bg-white dark:bg-gray-800 rounded-2xl p-3 border border-gray-200/80 dark:border-gray-700/80 hover:border-indigo-500/50 transition-all flex flex-col justify-between space-y-3 group"
+              >
+                <div className="space-y-2">
+                  <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-900">
+                    <img
+                      src={getYouTubeThumbnail(rec.youtubeId)}
+                      alt={rec.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded-md bg-black/80 text-white text-[10px] font-mono">
+                      {formatDuration(rec.duration)}
+                    </div>
+                  </div>
+                  <h4 className="text-xs font-bold text-gray-900 dark:text-white line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    {rec.title}
+                  </h4>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
+                    {rec.channelName}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => handleQuickAddSuggested(rec)}
+                  className="w-full py-2 rounded-xl bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white dark:bg-indigo-950/60 dark:hover:bg-indigo-600 dark:text-indigo-300 dark:hover:text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add & Watch</span>
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}

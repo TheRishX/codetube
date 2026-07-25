@@ -91,18 +91,9 @@ export const NotesPanel: React.FC<NotesPanelProps> = ({
             Video Notes ({notes.length})
           </h3>
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            const time = Math.floor(getCurrentTimeSeconds());
-            setNewNoteContent(`[Timestamp ${formatDuration(time)}] `);
-          }}
-          className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-        >
-          <Clock className="w-3.5 h-3.5" />
-          Insert Current Time
-        </button>
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          Auto-timestamped from video
+        </span>
       </div>
 
       {/* Note Input Form */}

@@ -150,8 +150,10 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
   const videoNotes = notes.filter((n) => n.videoId === video.id);
   const videoBookmarks = bookmarks.filter((b) => b.videoId === video.id);
 
+  const [focusTab, setFocusTab] = useState<'chat' | 'notes' | 'bookmarks'>('chat');
+
   return (
-    <div className={`space-y-6 animate-in fade-in duration-300 ${isZenMode ? 'max-w-5xl mx-auto py-2' : ''}`}>
+    <div className={`space-y-6 animate-in fade-in duration-300 ${isZenMode ? 'max-w-7xl mx-auto py-2' : ''}`}>
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between gap-4">
         <button
@@ -163,17 +165,17 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
         </button>
 
         <div className="flex items-center gap-2">
-          {/* Zen Mode Button */}
+          {/* Zen / Focus Mode Toggle */}
           <button
             onClick={toggleZenMode}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs ${
               isZenMode
-                ? 'bg-red-600 text-white ring-2 ring-red-500 ring-offset-2 dark:ring-offset-gray-900'
+                ? 'bg-indigo-600 text-white ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-gray-900'
                 : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60'
             }`}
           >
-            {isZenMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4 text-indigo-500" />}
-            <span>{isZenMode ? 'Exit Zen Mode' : 'Zen Mode'}</span>
+            {isZenMode ? <EyeOff className="w-4 h-4" /> : <Focus className="w-4 h-4 text-indigo-500" />}
+            <span>{isZenMode ? 'Exit Focus Mode' : 'Focus Mode'}</span>
           </button>
 
           {/* Watch Later Toggle */}
@@ -233,9 +235,9 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
       )}
 
       {/* Main Layout Grid */}
-      <div className={`grid grid-cols-1 ${isZenMode ? 'grid-cols-1' : 'lg:grid-cols-3'} gap-8`}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
         {/* Left Column: Player & Video Info */}
-        <div className={isZenMode ? 'col-span-1' : 'lg:col-span-2 space-y-6'}>
+        <div className="lg:col-span-2 space-y-6 min-w-0">
           <VideoPlayer
             video={video}
             initialProgress={progress}
@@ -294,20 +296,9 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
             )}
           </div>
 
-          {/* Interactive Chat & Discussion Panel in Focus/Zen Mode */}
-          {isZenMode && (
-            <FocusVideoChat
-              video={video}
-              getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
-              onJumpToTimestamp={handleJumpToTimestamp}
-              notes={videoNotes}
-              onNotesChanged={onNotesChanged}
-            />
-          )}
-
           {/* Related Videos */}
-          {!isZenMode && relatedVideos.length > 0 && (
-            <div className="space-y-4 pt-4">
+          {relatedVideos.length > 0 && (
+            <div className="space-y-4 pt-2">
               <h3 className="text-base font-bold text-gray-900 dark:text-white">
                 More in {video.category}
               </h3>
@@ -333,55 +324,82 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
           )}
         </div>
 
-        {/* Right Column: Notes & Bookmarks Panel (Hidden in Zen Mode) */}
-        {!isZenMode && (
-          <div className="space-y-6">
-            {/* Tab selector */}
-            <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl border border-gray-200 dark:border-gray-700">
+        {/* Right Column: Unified Interactive Sidebar (Chat, Notes, Bookmarks) */}
+        <div className="lg:col-span-1 space-y-4 min-w-0 sticky top-4">
+          {/* Sidebar Mode Tabs */}
+          <div className="flex bg-gray-100 dark:bg-gray-800/90 p-1 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs">
+            {isZenMode && (
               <button
-                onClick={() => setActiveTab('notes')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeTab === 'notes'
+                onClick={() => setFocusTab('chat')}
+                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  focusTab === 'chat'
                     ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                    : 'text-gray-500 dark:text-gray-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                 }`}
               >
-                <MessageSquare className="w-4 h-4" />
-                <span>Notes ({videoNotes.length})</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>AI Tutor</span>
               </button>
-
-              <button
-                onClick={() => setActiveTab('bookmarks')}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                  activeTab === 'bookmarks'
-                    ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-xs'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
-              >
-                <BookOpen className="w-4 h-4" />
-                <span>Bookmarks ({videoBookmarks.length})</span>
-              </button>
-            </div>
-
-            {activeTab === 'notes' ? (
-              <NotesPanel
-                videoId={video.id}
-                notes={videoNotes}
-                getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
-                onJumpToTimestamp={handleJumpToTimestamp}
-                onNotesChanged={onNotesChanged}
-              />
-            ) : (
-              <BookmarkList
-                videoId={video.id}
-                bookmarks={videoBookmarks}
-                getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
-                onJumpToTimestamp={handleJumpToTimestamp}
-                onBookmarksChanged={onBookmarksChanged}
-              />
             )}
+
+            <button
+              onClick={() => {
+                setFocusTab('notes');
+                setActiveTab('notes');
+              }}
+              className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                (!isZenMode && activeTab === 'notes') || (isZenMode && focusTab === 'notes')
+                  ? 'bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Notes ({videoNotes.length})</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setFocusTab('bookmarks');
+                setActiveTab('bookmarks');
+              }}
+              className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                (!isZenMode && activeTab === 'bookmarks') || (isZenMode && focusTab === 'bookmarks')
+                  ? 'bg-white dark:bg-gray-700 text-amber-600 dark:text-amber-400 shadow-xs'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>Bookmarks ({videoBookmarks.length})</span>
+            </button>
           </div>
-        )}
+
+          {/* Active Sidebar Tab Content */}
+          {isZenMode && focusTab === 'chat' ? (
+            <FocusVideoChat
+              video={video}
+              getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
+              onJumpToTimestamp={handleJumpToTimestamp}
+              notes={videoNotes}
+              onNotesChanged={onNotesChanged}
+            />
+          ) : (isZenMode ? focusTab === 'notes' : activeTab === 'notes') ? (
+            <NotesPanel
+              videoId={video.id}
+              notes={videoNotes}
+              getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
+              onJumpToTimestamp={handleJumpToTimestamp}
+              onNotesChanged={onNotesChanged}
+            />
+          ) : (
+            <BookmarkList
+              videoId={video.id}
+              bookmarks={videoBookmarks}
+              getCurrentTimeSeconds={() => (getCurrentTimeRef.current ? getCurrentTimeRef.current() : 0)}
+              onJumpToTimestamp={handleJumpToTimestamp}
+              onBookmarksChanged={onBookmarksChanged}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

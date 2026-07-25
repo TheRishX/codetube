@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { Playlist, VideoItem, VideoProgress } from '../types';
 import { getYouTubeThumbnail, isYouTubePlaylistUrl, extractYouTubePlaylistId } from '../lib/youtube';
-import { savePlaylistToFirestore, deletePlaylistFromFirestore, updatePlaylistInFirestore } from '../lib/firebase';
+import { savePlaylistToFirestore, deletePlaylistFromFirestore, updatePlaylistInFirestore, saveVideoToFirestore } from '../lib/firebase';
 
 interface PlaylistsPageProps {
   playlists: Playlist[];
@@ -177,12 +177,21 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
   };
 
   const handlePlayVideoFromPlaylist = async (video: VideoItem, playlistId?: string) => {
+    try {
+      await saveVideoToFirestore(video);
+    } catch (err) {
+      console.warn('Failed to ensure video in main Firestore collection:', err);
+    }
 
     if (playlistId) {
       try {
-        await updatePlaylistInFirestore(playlistId, { lastWatchedVideoId: video.id });
+        await updatePlaylistInFirestore(playlistId, {
+          lastPlayedVideoId: video.id,
+          lastWatchedVideoId: video.id,
+          updatedAt: Date.now(),
+        });
       } catch (err) {
-        console.error('Failed to update playlist lastWatchedVideoId:', err);
+        console.error('Failed to update playlist lastPlayedVideoId:', err);
       }
     }
     onSelectVideo(video);
