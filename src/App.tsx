@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, onSnapshot, doc, getDocs } from 'firebase/firestore';
-import { db, seedInitialDataIfEmpty, deleteVideoFromFirestore, updateVideoInFirestore } from './lib/firebase';
+import { db, seedInitialDataIfEmpty, deleteVideoFromFirestore, updateVideoInFirestore, savePlaylistToFirestore } from './lib/firebase';
 import { VideoItem, VideoProgress, VideoNote, VideoBookmark, LearningGoal, ActivityLog, Playlist, AppLayoutPreferences, DEFAULT_LAYOUT_PREFERENCES } from './types';
 
 import { ThemeProvider } from './context/ThemeContext';
@@ -394,6 +394,7 @@ export function LearnVerseApp() {
               bookmarks={bookmarks}
               allVideos={videos}
               progressMap={progressMap}
+              playlists={playlists}
               watchLaterIds={watchLaterIds}
               onToggleWatchLater={handleToggleWatchLater}
               onBack={() => handleNavigate('library')}
@@ -449,6 +450,39 @@ export function LearnVerseApp() {
               goal={goal}
               onGoalUpdated={(newG) => setGoal(newG)}
               onRefreshAllData={() => {}}
+              onImportPlaylistFromTester={async (meta: any) => {
+                try {
+                  const plObj: Playlist = {
+                    id: `pl-${Date.now()}`,
+                    playlistId: meta.playlistId,
+                    title: meta.title,
+                    channelName: meta.channelName,
+                    thumbnail: meta.thumbnailUrl,
+                    category: 'MERN Stack',
+                    difficulty: 'Beginner',
+                    totalVideos: meta.videos.length,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    videos: meta.videos.map((v: any, index: number) => ({
+                      id: `vid-${Date.now()}-${index}`,
+                      youtubeId: v.youtubeId,
+                      title: v.title,
+                      channelName: v.channelName || meta.channelName,
+                      thumbnailUrl: v.thumbnailUrl,
+                      duration: v.duration || 0,
+                      category: 'MERN Stack',
+                      difficulty: 'Beginner',
+                      tags: ['PlaylistImport'],
+                      status: 'not-started',
+                      playlistId: meta.playlistId,
+                    })),
+                  };
+                  await savePlaylistToFirestore(plObj);
+                  setCurrentTab('playlists');
+                } catch (e) {
+                  console.error('Failed to import playlist:', e);
+                }
+              }}
             />
           )}
         </main>

@@ -103,7 +103,7 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
         title: v.title,
         thumbnail: v.thumbnailUrl,
         channelName: v.channelName || meta.channelName,
-        duration: 0,
+        duration: v.duration || 0,
         category,
         difficulty: 'Intermediate',
         tags: [category, 'Playlist'],
@@ -128,11 +128,6 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
       };
 
       await savePlaylistToFirestore(newPlaylist);
-
-      // Save videos to videos collection so they are available in main library
-      for (const pVid of playlistVideos) {
-        await saveVideoToFirestore(pVid);
-      }
 
       setPlaylistUrlInput('');
       setCreateMsg(`Successfully imported playlist "${meta.title}" (${playlistVideos.length} videos)!`);

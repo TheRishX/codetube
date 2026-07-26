@@ -14,9 +14,10 @@ export interface YouTubeMetadata {
 /**
  * Extracts a 11-character YouTube video ID from various URL formats or plain ID.
  */
-export function extractYouTubeId(urlOrId: string): string | null {
-  if (!urlOrId) return null;
-  const trimmed = urlOrId.trim();
+export function extractYouTubeId(urlOrId: any): string | null {
+  if (urlOrId === null || urlOrId === undefined) return null;
+  const str = typeof urlOrId === 'string' ? urlOrId : String(urlOrId);
+  const trimmed = str.trim();
 
   // If it's already an 11-character alphanumeric video ID
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
@@ -165,9 +166,10 @@ export function detectCategoryFromTitleAndChannel(title: string, channelName: st
 /**
  * Extracts a YouTube playlist ID from list parameter in URLs.
  */
-export function extractYouTubePlaylistId(urlOrId: string): string | null {
-  if (!urlOrId) return null;
-  const trimmed = urlOrId.trim();
+export function extractYouTubePlaylistId(urlOrId: any): string | null {
+  if (urlOrId === null || urlOrId === undefined) return null;
+  const str = typeof urlOrId === 'string' ? urlOrId : String(urlOrId);
+  const trimmed = str.trim();
 
   // If it starts with PL or is alphanumeric list ID
   if (/^PL[a-zA-Z0-9_-]+$/.test(trimmed)) {
@@ -199,91 +201,297 @@ export interface YouTubePlaylistMetadata {
     title: string;
     channelName: string;
     thumbnailUrl: string;
+    duration?: number;
   }[];
 }
 
 /**
- * Fetches real YouTube Playlist details (title, channel, videos) via oEmbed & RSS feed proxy.
+ * Parses ISO 8601 duration strings from YouTube Data API (e.g., "PT1H2M10S", "PT15M33S", "PT45S") to seconds.
  */
-export async function fetchYouTubePlaylistMetadata(playlistId: string): Promise<YouTubePlaylistMetadata> {
-  const defaultTitle = `YouTube Playlist (${playlistId})`;
+export function parseISO8601Duration(isoDuration: string): number {
+  if (!isoDuration) return 0;
+  const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+/**
+ * Fetches real YouTube Playlist details (title, channel, all videos) via YouTube Data API v3, Piped, Invidious, oEmbed & RSS proxies.
+ */
+export async function fetchYouTubePlaylistMetadata(playlistId: any): Promise<YouTubePlaylistMetadata> {
+  const cleanPlId = String(playlistId || '').replace(/^[?&]list=/, '').trim();
+  const defaultTitle = `YouTube Playlist (${cleanPlId})`;
   const defaultChannel = 'YouTube Channel';
+
   let title = defaultTitle;
   let channelName = defaultChannel;
-  let thumbnailUrl = `https://img.youtube.com/vi/PkZNo7MFNFg/hqdefault.jpg`;
-  let fetchedVideos: { youtubeId: string; title: string; channelName: string; thumbnailUrl: string }[] = [];
+  let thumbnailUrl = '';
+  let fetchedVideos: {
+    youtubeId: string;
+    title: string;
+    channelName: string;
+    thumbnailUrl: string;
+    duration?: number;
+  }[] = [];
 
-  // 1. Fetch oEmbed metadata for playlist title & channel name
-  try {
-    const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
-    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(playlistUrl)}&format=json`;
-    const res = await fetch(oembedUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.title) title = data.title;
-      if (data.author_name) channelName = data.author_name;
+  // Check for user-configured YouTube API key (from localStorage or process.env/meta.env)
+  const userApiKey = typeof window !== 'undefined' ? (localStorage.getItem('youtube_api_key') || '') : '';
+  const envApiKey = (import.meta as any).env?.VITE_YOUTUBE_API_KEY || (process.env as any)?.VITE_YOUTUBE_API_KEY || '';
+  const apiKey = (userApiKey || envApiKey).trim();
+
+  // Provider 0: Official YouTube Data API v3 if API key is supplied
+  if (apiKey) {
+    try {
+      // 0a. Fetch playlist details (title, channel, thumbnail)
+      const plUrl = `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&id=${cleanPlId}&key=${apiKey}`;
+      const plRes = await fetch(plUrl);
+      if (plRes.ok) {
+        const plData = await plRes.json();
+        if (plData.items && plData.items.length > 0) {
+          const item = plData.items[0];
+          title = item.snippet?.title || title;
+          channelName = item.snippet?.channelTitle || channelName;
+          thumbnailUrl = item.snippet?.thumbnails?.maxres?.url || item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || '';
+        }
+      }
+
+      // 0b. Paginate through all playlist items
+      let pageToken = '';
+      let apiVideos: { youtubeId: string; title: string; channelName: string; thumbnailUrl: string }[] = [];
+
+      do {
+        const itemsUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${cleanPlId}&maxResults=50${pageToken ? `&pageToken=${pageToken}` : ''}&key=${apiKey}`;
+        const itemsRes = await fetch(itemsUrl);
+        if (!itemsRes.ok) break;
+        const itemsData = await itemsRes.json();
+        if (itemsData.items && Array.isArray(itemsData.items)) {
+          for (const item of itemsData.items) {
+            const vId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
+            const vTitle = item.snippet?.title;
+            if (vId && vTitle && vTitle !== 'Private video' && vTitle !== 'Deleted video') {
+              const vThumb = item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || getYouTubeThumbnail(vId);
+              const vAuthor = item.snippet?.videoOwnerChannelTitle || item.snippet?.channelTitle || channelName;
+              apiVideos.push({
+                youtubeId: vId,
+                title: vTitle,
+                channelName: vAuthor,
+                thumbnailUrl: vThumb,
+              });
+            }
+          }
+        }
+        pageToken = itemsData.nextPageToken || '';
+      } while (pageToken && apiVideos.length < 500);
+
+      // 0c. Fetch video durations in batches of 50
+      if (apiVideos.length > 0) {
+        for (let i = 0; i < apiVideos.length; i += 50) {
+          const chunk = apiVideos.slice(i, i + 50);
+          const ids = chunk.map((v) => v.youtubeId).join(',');
+          const vDetailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${apiKey}`;
+          const vDetailsRes = await fetch(vDetailsUrl);
+          if (vDetailsRes.ok) {
+            const vDetailsData = await vDetailsRes.json();
+            const durationMap: Record<string, number> = {};
+            if (vDetailsData.items && Array.isArray(vDetailsData.items)) {
+              vDetailsData.items.forEach((vItem: any) => {
+                if (vItem.id && vItem.contentDetails?.duration) {
+                  durationMap[vItem.id] = parseISO8601Duration(vItem.contentDetails.duration);
+                }
+              });
+            }
+            chunk.forEach((v) => {
+              fetchedVideos.push({
+                ...v,
+                duration: durationMap[v.youtubeId] || 0,
+              });
+            });
+          } else {
+            chunk.forEach((v) => fetchedVideos.push({ ...v, duration: 0 }));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('YouTube Data API v3 fetch encountered an error, falling back to public mirrors:', e);
     }
-  } catch (e) {
-    console.warn('oEmbed fetch failed for playlist:', e);
   }
 
-  // 2. Fetch playlist RSS XML feed via CORS proxy to extract real video IDs and titles
-  try {
-    const feedUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`;
-    const res = await fetch(proxyUrl);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.contents) {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
-        const entries = Array.from(xmlDoc.querySelectorAll('entry'));
+  // Provider 1: Piped API instances (returns all videos in playlist)
+  const pipedInstances = [
+    `https://pipedapi.kavin.rocks/playlists/${cleanPlId}`,
+    `https://api.piped.video/playlists/${cleanPlId}`,
+    `https://pipedapi.mha.fi/playlists/${cleanPlId}`,
+    `https://piped-api.garudalinux.org/playlists/${cleanPlId}`
+  ];
 
-        entries.forEach((entry, idx) => {
-          const videoId = entry.querySelector('yt\\:videoId, videoId')?.textContent || '';
-          const entryTitle = entry.querySelector('title')?.textContent || `Video ${idx + 1}`;
-          const author = entry.querySelector('author name')?.textContent || channelName;
-          const mediaThumb = entry.querySelector('media\\:thumbnail, thumbnail')?.getAttribute('url') || getYouTubeThumbnail(videoId);
+  for (const endpoint of pipedInstances) {
+    if (fetchedVideos.length > 0) break;
+    try {
+      const res = await fetch(endpoint, { signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title) title = data.title;
+        if (data.uploader || data.uploaderName) channelName = data.uploader || data.uploaderName;
+        if (data.thumbnailUrl) thumbnailUrl = data.thumbnailUrl;
 
-          if (videoId) {
-            fetchedVideos.push({
-              youtubeId: videoId,
-              title: entryTitle,
-              channelName: author,
-              thumbnailUrl: mediaThumb || getYouTubeThumbnail(videoId),
+        const streams = data.relatedStreams || data.videos || [];
+        if (Array.isArray(streams) && streams.length > 0) {
+          streams.forEach((item: any) => {
+            const rawUrl = item.url || item.videoId || item.id || '';
+            const vidId = extractYouTubeId(rawUrl);
+            if (vidId) {
+              fetchedVideos.push({
+                youtubeId: vidId,
+                title: item.title || `Video ${fetchedVideos.length + 1}`,
+                channelName: item.uploaderName || item.uploader || channelName,
+                thumbnailUrl: item.thumbnailUrl || item.thumbnail || getYouTubeThumbnail(vidId),
+                duration: typeof item.duration === 'number' ? item.duration : parseDurationToSeconds(item.duration || 0),
+              });
+            }
+          });
+        }
+      }
+    } catch (e) {
+      // Continue to next provider
+    }
+  }
+
+  // Provider 2: Invidious API instances if Piped didn't return videos
+  if (fetchedVideos.length === 0) {
+    const invidiousInstances = [
+      `https://inv.tux.pizza/api/v1/playlists/${cleanPlId}`,
+      `https://invidious.nerdvpn.de/api/v1/playlists/${cleanPlId}`,
+      `https://invidious.drgns.space/api/v1/playlists/${cleanPlId}`
+    ];
+
+    for (const endpoint of invidiousInstances) {
+      if (fetchedVideos.length > 0) break;
+      try {
+        const res = await fetch(endpoint, { signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.title) title = data.title;
+          if (data.author) channelName = data.author;
+
+          const vids = data.videos || [];
+          if (Array.isArray(vids) && vids.length > 0) {
+            vids.forEach((item: any) => {
+              if (item.videoId) {
+                fetchedVideos.push({
+                  youtubeId: item.videoId,
+                  title: item.title || `Video ${fetchedVideos.length + 1}`,
+                  channelName: item.author || channelName,
+                  thumbnailUrl: getYouTubeThumbnail(item.videoId),
+                  duration: item.lengthSeconds || 0,
+                });
+              }
             });
           }
-        });
+        }
+      } catch (e) {
+        // Continue
       }
     }
-  } catch (err) {
-    console.warn('RSS feed proxy fetch failed for playlist:', err);
   }
 
-  if (fetchedVideos.length > 0) {
-    thumbnailUrl = fetchedVideos[0].thumbnailUrl;
-  }
-
-  // If no videos were extracted from RSS (fallback protection)
+  // Provider 3: RSS Feed via multiple CORS proxies if still empty
   if (fetchedVideos.length === 0) {
+    const feedUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${cleanPlId}`;
+    const proxies = [
+      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(feedUrl)}`,
+      `https://corsproxy.io/?${encodeURIComponent(feedUrl)}`,
+      `https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`
+    ];
+
+    for (const pUrl of proxies) {
+      if (fetchedVideos.length > 0) break;
+      try {
+        const res = await fetch(pUrl, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+          let xmlText = '';
+          if (pUrl.includes('allorigins')) {
+            const data = await res.json();
+            xmlText = data.contents || '';
+          } else {
+            xmlText = await res.text();
+          }
+
+          if (xmlText && xmlText.includes('<entry>')) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+            const entries = Array.from(xmlDoc.querySelectorAll('entry'));
+
+            entries.forEach((entry, idx) => {
+              const videoId = entry.querySelector('yt\\:videoId, videoId')?.textContent || '';
+              const entryTitle = entry.querySelector('title')?.textContent || `Video ${idx + 1}`;
+              const author = entry.querySelector('author name')?.textContent || channelName;
+              const mediaThumb = entry.querySelector('media\\:thumbnail, thumbnail')?.getAttribute('url') || getYouTubeThumbnail(videoId);
+
+              if (videoId) {
+                fetchedVideos.push({
+                  youtubeId: videoId,
+                  title: entryTitle,
+                  channelName: author,
+                  thumbnailUrl: mediaThumb || getYouTubeThumbnail(videoId),
+                  duration: 0,
+                });
+              }
+            });
+          }
+        }
+      } catch (e) {
+        // Continue
+      }
+    }
+  }
+
+  // If title / author still default, try YouTube oEmbed
+  if (title === defaultTitle || channelName === defaultChannel) {
+    try {
+      const playlistUrl = `https://www.youtube.com/playlist?list=${cleanPlId}`;
+      const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(playlistUrl)}&format=json`;
+      const res = await fetch(oembedUrl);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.title) title = data.title;
+        if (data.author_name) channelName = data.author_name;
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // Set main thumbnail URL from video 1 if missing
+  if (fetchedVideos.length > 0) {
+    if (!thumbnailUrl) {
+      thumbnailUrl = fetchedVideos[0].thumbnailUrl || getYouTubeThumbnail(fetchedVideos[0].youtubeId);
+    }
+  } else {
+    // Ultimate fallback if network is completely offline/blocked
+    thumbnailUrl = getYouTubeThumbnail('PkZNo7MFNFg');
     fetchedVideos = [
       {
         youtubeId: 'PkZNo7MFNFg',
         title: `${title} - Introduction & Module 1`,
         channelName: channelName,
         thumbnailUrl: getYouTubeThumbnail('PkZNo7MFNFg'),
+        duration: 900,
       },
       {
         youtubeId: 'hdI2bqOjy3c',
         title: `${title} - Deep Dive & Core Concepts`,
         channelName: channelName,
         thumbnailUrl: getYouTubeThumbnail('hdI2bqOjy3c'),
+        duration: 1800,
       }
     ];
   }
 
   return {
-    playlistId,
+    playlistId: cleanPlId,
     title,
     channelName,
     thumbnailUrl,

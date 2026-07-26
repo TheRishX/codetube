@@ -189,8 +189,8 @@ export function isCategoryMatch(videoCategory: string, targetCategory: string, v
   if (!videoCategory || !targetCategory) return false;
   if (targetCategory === 'All' || targetCategory === 'all') return true;
 
-  const vCat = videoCategory.trim().toLowerCase();
-  const target = targetCategory.trim().toLowerCase();
+  const vCat = String(videoCategory).trim().toLowerCase();
+  const target = String(targetCategory).trim().toLowerCase();
 
   // Exact string match
   if (vCat === target) return true;

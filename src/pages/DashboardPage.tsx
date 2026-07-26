@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { VideoItem, VideoProgress, Playlist, CATEGORIES, AppLayoutPreferences, CategoryInfo, isCategoryMatch } from '../types';
 import { VideoCard } from '../components/VideoCard';
+import { PlaylistCard } from '../components/PlaylistCard';
+import { PlaylistDetailModal } from '../components/PlaylistDetailModal';
 import { useGlobalPaste } from '../context/GlobalPasteContext';
 import { saveVideoToFirestore } from '../lib/firebase';
 import { formatDuration, getYouTubeThumbnail } from '../lib/youtube';
@@ -107,6 +109,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   // Absolute last watched video ID
   const lastWatchedVideoId = lastPlayedVideos.length > 0 ? lastPlayedVideos[0].id : undefined;
+
+  const [openedPlaylist, setOpenedPlaylist] = useState<Playlist | null>(null);
+
+  const filteredPlaylists = useMemo(() => {
+    let result = [...playlists];
+
+    if (selectedCategory !== 'All') {
+      result = result.filter((pl) => isCategoryMatch(pl.category, selectedCategory));
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (pl) =>
+          pl.title.toLowerCase().includes(q) ||
+          pl.channelName.toLowerCase().includes(q) ||
+          pl.category.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [playlists, selectedCategory, searchQuery]);
 
   // Active Videos (excluding archived by default)
   const activeVideos = useMemo(() => {
@@ -324,6 +348,42 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </section>
       )}
 
+      {/* PLAYLISTS SECTION ON HOMEPAGE */}
+      {filteredPlaylists.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-6 rounded-full bg-red-600" />
+              <div>
+                <h2 className="text-lg font-extrabold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <ListVideo className="w-5 h-5 text-red-600" /> Playlists & Full Courses
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {filteredPlaylists.length} {filteredPlaylists.length === 1 ? 'playlist' : 'playlists'} available
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onNavigate('playlists')}
+              className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              View All Playlists →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {filteredPlaylists.map((pl) => (
+              <PlaylistCard
+                key={pl.id}
+                playlist={pl}
+                progressMap={progressMap}
+                onOpenPlaylist={(playlist) => setOpenedPlaylist(playlist)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* SECTION 2: MY LIBRARY GRID */}
       {showLibrary && (
         <section className="space-y-5">
@@ -435,6 +495,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           )}
         </section>
       )}
+
+      {/* Playlist Detail Modal */}
+      <PlaylistDetailModal
+        playlist={openedPlaylist}
+        progressMap={progressMap}
+        onClose={() => setOpenedPlaylist(null)}
+        onSelectVideo={async (video) => {
+          try {
+            await saveVideoToFirestore(video);
+          } catch (e) {
+            console.warn('Failed to ensure video in Firestore:', e);
+          }
+          onSelectVideo(video);
+        }}
+      />
     </div>
   );
 };

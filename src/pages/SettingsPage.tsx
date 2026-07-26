@@ -16,28 +16,63 @@ import {
   Send,
   ShieldCheck,
   CheckCircle2,
+  Key,
+  Youtube,
+  AlertCircle,
+  Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { LearningGoal } from '../types';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { saveGoalToFirestore, seedInitialDataIfEmpty } from '../lib/firebase';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { sendBrowserPushNotification } from '../components/DailyTargetReminderToast';
+import { getStoredApiKey, setStoredApiKey, testYouTubeApiKey, ApiKeyTestResult } from '../services/playlistFetcher';
+import { PlaylistTesterTool } from '../components/PlaylistTesterTool';
 
 interface SettingsPageProps {
   goal: LearningGoal;
   onGoalUpdated: (newGoal: LearningGoal) => void;
   onRefreshAllData: () => void;
+  onImportPlaylistFromTester?: (meta: any) => void;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
   goal,
   onGoalUpdated,
   onRefreshAllData,
+  onImportPlaylistFromTester,
 }) => {
   const [dailyTargetInput, setDailyTargetInput] = useState(goal.dailyTarget.toString());
   const [weeklyTargetInput, setWeeklyTargetInput] = useState(goal.weeklyTarget.toString());
   const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // YouTube API Key state
+  const [apiKeyInput, setApiKeyInput] = useState(() => getStoredApiKey());
+  const [apiKeyTestResult, setApiKeyTestResult] = useState<ApiKeyTestResult | null>(null);
+  const [isTestingApiKey, setIsTestingApiKey] = useState(false);
+  const [apiKeySaveSuccess, setApiKeySaveSuccess] = useState(false);
+
+  const handleSaveApiKey = () => {
+    setStoredApiKey(apiKeyInput);
+    setApiKeySaveSuccess(true);
+    setTimeout(() => setApiKeySaveSuccess(false), 3000);
+  };
+
+  const handleTestApiKey = async () => {
+    setIsTestingApiKey(true);
+    setApiKeyTestResult(null);
+    try {
+      const res = await testYouTubeApiKey(apiKeyInput);
+      setApiKeyTestResult(res);
+      if (res.valid) {
+        setStoredApiKey(apiKeyInput);
+      }
+    } finally {
+      setIsTestingApiKey(false);
+    }
+  };
 
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -122,18 +157,98 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </p>
       </div>
 
-      {/* Public MVP Notice Banner */}
-      <div className="p-5 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 space-y-2">
-        <div className="flex items-center gap-2 font-bold text-sm text-amber-700 dark:text-amber-400">
-          <ShieldAlert className="w-5 h-5" />
-          Public Access MVP Notice
+      {/* YouTube API v3 Settings Card */}
+      <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200/80 dark:border-gray-700/80 shadow-xs space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
+            <Key className="w-5 h-5 text-amber-500" />
+            YouTube Data API v3 Configuration
+          </div>
+
+          {apiKeyInput ? (
+            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1">
+              <Check className="w-4 h-4" /> Custom Key Configured
+            </span>
+          ) : (
+            <span className="px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold">
+              Multi-Mirror Proxy Active
+            </span>
+          )}
         </div>
-        <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">
-          LearnVerse is designed as a public, open learning platform prototype. It allows everyone to save videos, track progress, write notes, and set goals without creating an account or signing in.
-          Data is saved to Google Cloud Firestore using public read/write rules.
-          <strong> Do not store sensitive or private information.</strong>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          Configure an official Google Cloud YouTube Data API v3 key for direct, high-resolution playlist metadata fetching and video durations. If empty, CodeTube uses full-stack RSS XML server proxies automatically.
         </p>
+
+        <div className="space-y-3">
+          <label className="block text-xs font-bold text-gray-700 dark:text-gray-300">
+            Google Cloud YouTube API Key
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              placeholder="AIzaSy..."
+              className="flex-1 px-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-gray-900/60 border border-gray-300 dark:border-gray-700 text-xs font-mono text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-hidden"
+            />
+            <button
+              type="button"
+              onClick={handleSaveApiKey}
+              className="px-4 py-2.5 rounded-2xl bg-gray-900 hover:bg-black dark:bg-gray-700 dark:hover:bg-gray-600 text-white font-bold text-xs transition-colors cursor-pointer"
+            >
+              Save Key
+            </button>
+            <button
+              type="button"
+              onClick={handleTestApiKey}
+              disabled={isTestingApiKey || !apiKeyInput.trim()}
+              className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs shadow-md shadow-amber-600/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              {isTestingApiKey ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Testing...</span>
+                </>
+              ) : (
+                <>
+                  <Youtube className="w-4 h-4" />
+                  <span>Test Key</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {apiKeySaveSuccess && (
+            <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <Check className="w-4 h-4" /> API Key saved successfully!
+            </p>
+          )}
+
+          {apiKeyTestResult && (
+            <div
+              className={`p-4 rounded-2xl border text-xs space-y-1 ${
+                apiKeyTestResult.valid
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                  : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-900 dark:text-red-200'
+              }`}
+            >
+              <div className="flex items-center gap-2 font-bold">
+                {apiKeyTestResult.valid ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-red-600" />}
+                {apiKeyTestResult.message}
+              </div>
+              {apiKeyTestResult.playlistTitle && (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                  Test Playlist Fetched: <strong>{apiKeyTestResult.playlistTitle}</strong> ({apiKeyTestResult.itemCount} items)
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Embedded Playlist Checker & Tester Tool */}
+      <PlaylistTesterTool onImportPlaylist={onImportPlaylistFromTester} />
 
       {/* Learning Goals Settings */}
       <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200/80 dark:border-gray-700/80 shadow-xs space-y-4">

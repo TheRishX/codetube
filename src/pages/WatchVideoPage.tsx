@@ -17,13 +17,14 @@ import {
   ListVideo,
   FileText
 } from 'lucide-react';
-import { VideoItem, VideoProgress, VideoNote, VideoBookmark } from '../types';
+import { VideoItem, VideoProgress, VideoNote, VideoBookmark, Playlist } from '../types';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { NotesPanel } from '../components/NotesPanel';
 import { BookmarkList } from '../components/BookmarkList';
 import { FocusVideoChat } from '../components/FocusVideoChat';
 import { VideoSummaryPanel } from '../components/VideoSummaryPanel';
 import { VideoCard } from '../components/VideoCard';
+import { PlaylistSidebarPanel } from '../components/PlaylistSidebarPanel';
 import { saveProgressToFirestore, updateVideoInFirestore } from '../lib/firebase';
 
 interface WatchVideoPageProps {
@@ -33,6 +34,7 @@ interface WatchVideoPageProps {
   bookmarks: VideoBookmark[];
   allVideos: VideoItem[];
   progressMap: Record<string, VideoProgress>;
+  playlists?: Playlist[];
   watchLaterIds?: string[];
   onToggleWatchLater?: (videoId: string) => void;
   onBack: () => void;
@@ -51,6 +53,7 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
   bookmarks,
   allVideos,
   progressMap,
+  playlists = [],
   watchLaterIds = [],
   onToggleWatchLater,
   onBack,
@@ -161,6 +164,34 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
 
   const videoNotes = notes.filter((n) => n.videoId === video.id);
   const videoBookmarks = bookmarks.filter((b) => b.videoId === video.id);
+
+  // Detect playlist associated with current video
+  const activePlaylist = playlists.find(
+    (p) =>
+      p.videos?.some((v) => v.id === video.id || v.youtubeId === video.youtubeId) ||
+      (video as any).playlistId === p.playlistId ||
+      (video as any).playlistId === p.id
+  );
+
+  let effectivePlaylist = activePlaylist;
+  if (!effectivePlaylist && (video as any).playlistId) {
+    const matchingVids = allVideos.filter((v) => (v as any).playlistId === (video as any).playlistId);
+    if (matchingVids.length > 0) {
+      effectivePlaylist = {
+        id: (video as any).playlistId,
+        playlistId: (video as any).playlistId,
+        title: `${video.category} Playlist`,
+        channelName: video.channelName,
+        thumbnail: video.thumbnail,
+        category: video.category,
+        difficulty: video.difficulty,
+        totalVideos: matchingVids.length,
+        videos: matchingVids,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+  }
 
   const [activeSidebarTab, setActiveSidebarTab] = useState<'summary' | 'notes' | 'bookmarks' | 'chat'>('summary');
   const [showZenControls, setShowZenControls] = useState(true);
@@ -400,6 +431,16 @@ export const WatchVideoPage: React.FC<WatchVideoPageProps> = ({
 
         {/* Right Column: Unified Interactive Sidebar (Summary, Chat, Notes, Bookmarks) */}
         <div className="lg:col-span-1 space-y-4 min-w-0 sticky top-4">
+          {/* Playlist Videos Sidebar if video belongs to a playlist */}
+          {effectivePlaylist && (
+            <PlaylistSidebarPanel
+              playlist={effectivePlaylist}
+              currentVideo={video}
+              progressMap={progressMap}
+              onSelectVideo={onSelectVideo}
+            />
+          )}
+
           {/* Sidebar Mode Tabs */}
           <div className="flex bg-gray-100 dark:bg-gray-800/90 p-1 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xs overflow-x-auto">
             <button
