@@ -125,7 +125,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         (pl) =>
           pl.title.toLowerCase().includes(q) ||
           pl.channelName.toLowerCase().includes(q) ||
-          pl.category.toLowerCase().includes(q)
+          pl.category.toLowerCase().includes(q) ||
+          (pl.tags && pl.tags.some((t) => t.toLowerCase().includes(q))) ||
+          // Search videos inside playlist
+          pl.videos?.some(
+            (v) =>
+              v.title.toLowerCase().includes(q) ||
+              v.channelName.toLowerCase().includes(q) ||
+              v.category.toLowerCase().includes(q) ||
+              (v.tags && v.tags.some((t) => t.toLowerCase().includes(q)))
+          )
       );
     }
 
@@ -137,9 +146,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return videos.filter((v) => (statusFilter === 'archived' ? v.status === 'archived' : v.status !== 'archived'));
   }, [videos, statusFilter]);
 
+  // All Searchable Videos (including videos inside playlists)
+  const allSearchableVideos = useMemo(() => {
+    if (!searchQuery.trim()) return activeVideos;
+
+    const existingIds = new Set(activeVideos.map((v) => v.id));
+    const combined = [...activeVideos];
+
+    playlists.forEach((pl) => {
+      pl.videos?.forEach((pVid) => {
+        if (!existingIds.has(pVid.id) && !existingIds.has(pVid.youtubeId)) {
+          combined.push({
+            ...pVid,
+            tags: pVid.tags?.length ? pVid.tags : [pVid.category || pl.category, 'Playlist Video'],
+          });
+          existingIds.add(pVid.id);
+        }
+      });
+    });
+
+    return combined;
+  }, [activeVideos, playlists, searchQuery]);
+
   // Filtered library videos using isCategoryMatch
   const filteredVideos = useMemo(() => {
-    let result = [...activeVideos];
+    let result = [...allSearchableVideos];
 
     if (selectedCategory !== 'All') {
       result = result.filter((v) => isCategoryMatch(v.category, selectedCategory, v.tags));

@@ -21,7 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { Playlist, VideoItem, VideoProgress } from '../types';
-import { getYouTubeThumbnail, isYouTubePlaylistUrl, extractYouTubePlaylistId, fetchYouTubePlaylistMetadata, detectCategoryFromTitleAndChannel } from '../lib/youtube';
+import { getYouTubeThumbnail, isYouTubePlaylistUrl, extractYouTubePlaylistId, fetchYouTubePlaylistMetadata, detectCategoryFromTitleAndChannel, generateAutoTags } from '../lib/youtube';
 import { savePlaylistToFirestore, deletePlaylistFromFirestore, updatePlaylistInFirestore, saveVideoToFirestore } from '../lib/firebase';
 
 interface PlaylistsPageProps {
@@ -67,10 +67,29 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
 
   // Filter playlists
   const filteredPlaylists = playlists.filter((pl) => {
-    const matchesSearch =
-      pl.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pl.channelName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      pl.category.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) {
+      const matchesCat = categoryFilter === 'all' || pl.category.toLowerCase() === categoryFilter.toLowerCase();
+      return matchesCat;
+    }
+
+    const matchesPlMeta =
+      pl.title.toLowerCase().includes(q) ||
+      pl.channelName.toLowerCase().includes(q) ||
+      pl.category.toLowerCase().includes(q) ||
+      (pl.description && pl.description.toLowerCase().includes(q)) ||
+      (pl.tags && pl.tags.some((t) => t.toLowerCase().includes(q)));
+
+    // SEARCH VIDEOS INSIDE PLAYLIST
+    const matchesInnerVideos = pl.videos?.some(
+      (v) =>
+        v.title.toLowerCase().includes(q) ||
+        v.channelName.toLowerCase().includes(q) ||
+        v.category.toLowerCase().includes(q) ||
+        (v.tags && v.tags.some((t) => t.toLowerCase().includes(q)))
+    );
+
+    const matchesSearch = matchesPlMeta || matchesInnerVideos;
     const matchesCat = categoryFilter === 'all' || pl.category.toLowerCase() === categoryFilter.toLowerCase();
     return matchesSearch && matchesCat;
   });
@@ -95,22 +114,28 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
       // Fetch real YouTube Playlist metadata and videos
       const meta = await fetchYouTubePlaylistMetadata(extractedPlId);
       const category = detectCategoryFromTitleAndChannel(meta.title, meta.channelName);
+      const plAutoTags = generateAutoTags(meta.title, meta.channelName, category);
 
-      const playlistVideos: VideoItem[] = meta.videos.map((v, idx) => ({
-        id: `pvid-${extractedPlId}-${idx}-${Date.now().toString().slice(-4)}`,
-        youtubeId: v.youtubeId,
-        youtubeUrl: `https://www.youtube.com/watch?v=${v.youtubeId}`,
-        title: v.title,
-        thumbnail: v.thumbnailUrl,
-        channelName: v.channelName || meta.channelName,
-        duration: v.duration || 0,
-        category,
-        difficulty: 'Intermediate',
-        tags: [category, 'Playlist'],
-        status: 'not-started',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      }));
+      const playlistVideos: VideoItem[] = meta.videos.map((v, idx) => {
+        const vAutoTags = generateAutoTags(v.title, v.channelName || meta.channelName, category);
+        const combinedTags = Array.from(new Set([...plAutoTags, ...vAutoTags, category, 'Playlist']));
+
+        return {
+          id: `pvid-${extractedPlId}-${idx}-${Date.now().toString().slice(-4)}`,
+          youtubeId: v.youtubeId,
+          youtubeUrl: `https://www.youtube.com/watch?v=${v.youtubeId}`,
+          title: v.title,
+          thumbnail: v.thumbnailUrl,
+          channelName: v.channelName || meta.channelName,
+          duration: v.duration || 0,
+          category,
+          difficulty: 'Intermediate',
+          tags: combinedTags,
+          status: 'not-started',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+      });
 
       const newPlaylist: Playlist = {
         id: `pl-${extractedPlId}-${Date.now().toString().slice(-4)}`,
@@ -125,7 +150,8 @@ export const PlaylistsPage: React.FC<PlaylistsPageProps> = ({
         createdAt: Date.now(),
         updatedAt: Date.now(),
         videos: playlistVideos,
-      };
+        tags: plAutoTags,
+      } as Playlist;
 
       await savePlaylistToFirestore(newPlaylist);
 

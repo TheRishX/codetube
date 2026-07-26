@@ -164,6 +164,104 @@ export function detectCategoryFromTitleAndChannel(title: string, channelName: st
 }
 
 /**
+ * Automatically generates relevant tags from title, channel name, category, and description.
+ */
+export function generateAutoTags(
+  title: string = '',
+  channelName: string = '',
+  category: string = '',
+  description: string = ''
+): string[] {
+  const combinedText = `${title} ${channelName} ${category} ${description}`.toLowerCase();
+  const tagsSet = new Set<string>();
+
+  // 1. Include Category if valid
+  if (category && category !== 'All' && category !== 'General') {
+    tagsSet.add(category);
+  }
+
+  // 2. Predefined high-signal technology & domain keywords map
+  const techKeywords: { pattern: RegExp; tag: string }[] = [
+    { pattern: /\breact(?:\.?js)?\b/i, tag: 'React' },
+    { pattern: /\bnext(?:\.?js)?\b/i, tag: 'Next.js' },
+    { pattern: /\bnode(?:\.?js)?\b/i, tag: 'Node.js' },
+    { pattern: /\btypescript|ts\b/i, tag: 'TypeScript' },
+    { pattern: /\bjavascript|js\b/i, tag: 'JavaScript' },
+    { pattern: /\bpython\b/i, tag: 'Python' },
+    { pattern: /\bjava\b/i, tag: 'Java' },
+    { pattern: /\bc\+\+\b/i, tag: 'C++' },
+    { pattern: /\bgo(?:lang)?\b/i, tag: 'Go' },
+    { pattern: /\brust\b/i, tag: 'Rust' },
+    { pattern: /\bdocker\b/i, tag: 'Docker' },
+    { pattern: /\bkubernetes|k8s\b/i, tag: 'Kubernetes' },
+    { pattern: /\baws|amazon web services\b/i, tag: 'AWS' },
+    { pattern: /\bmongodb\b/i, tag: 'MongoDB' },
+    { pattern: /\bpostgres(?:ql)?\b/i, tag: 'PostgreSQL' },
+    { pattern: /\bmysql\b/i, tag: 'MySQL' },
+    { pattern: /\bfirebase\b/i, tag: 'Firebase' },
+    { pattern: /\bsupabase\b/i, tag: 'Supabase' },
+    { pattern: /\bgraphql\b/i, tag: 'GraphQL' },
+    { pattern: /\brest api|restful\b/i, tag: 'REST API' },
+    { pattern: /\btailwind(?:\s*css)?\b/i, tag: 'Tailwind CSS' },
+    { pattern: /\bhtml5?|css3?\b/i, tag: 'HTML/CSS' },
+    { pattern: /\bgit|github\b/i, tag: 'Git' },
+    { pattern: /\bdsa|data structure|algorithms?\b/i, tag: 'DSA' },
+    { pattern: /\bsystem design\b/i, tag: 'System Design' },
+    { pattern: /\bcybersecurity|security|ethical hacking\b/i, tag: 'Security' },
+    { pattern: /\blinux|ubuntu|bash|shell\b/i, tag: 'Linux' },
+    { pattern: /\bexpress(?:\.?js)?\b/i, tag: 'Express' },
+    { pattern: /\bprisma\b/i, tag: 'Prisma' },
+    { pattern: /\bredux|zustand|context api\b/i, tag: 'State Management' },
+    { pattern: /\binterview|placement|career\b/i, tag: 'Interview Prep' },
+    { pattern: /\bcrash course|full course|tutorial|masterclass|guide\b/i, tag: 'Course' },
+    { pattern: /\bproject|build|clone|app from scratch\b/i, tag: 'Project' },
+    { pattern: /\bmern|mean|jamstack|full stack|fullstack\b/i, tag: 'Full Stack' },
+    { pattern: /\bfrontend|front end\b/i, tag: 'Frontend' },
+    { pattern: /\bbackend|back end\b/i, tag: 'Backend' },
+    { pattern: /\bdevops|ci\/?cd\b/i, tag: 'DevOps' },
+    { pattern: /\bmachine learning|ai|artificial intelligence|deep learning|llm|gpt\b/i, tag: 'AI & ML' },
+    { pattern: /\bflutter|react native|android|ios|swift|kotlin\b/i, tag: 'Mobile Dev' },
+  ];
+
+  techKeywords.forEach(({ pattern, tag }) => {
+    if (pattern.test(combinedText)) {
+      tagsSet.add(tag);
+    }
+  });
+
+  // 3. Extract meaningful title words if tags list is still small (< 3)
+  if (tagsSet.size < 3 && title) {
+    const stopwords = new Set([
+      'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+      'from', 'how', 'what', 'why', 'when', 'where', 'your', 'this', 'that', 'with',
+      'video', 'part', 'episode', 'chapter', 'complete', 'master', 'learn', 'using',
+      'official', 'edition', 'series', 'free', 'best', 'step', 'scratch', '2023', '2024',
+      '2025', '2026', 'hindi', 'english', 'guide', 'youtube'
+    ]);
+
+    const words = title
+      .replace(/[^\w\s#+.-]/g, ' ')
+      .split(/\s+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length >= 3 && !stopwords.has(w.toLowerCase()));
+
+    for (const word of words) {
+      if (tagsSet.size >= 5) break;
+      const formatted = word.charAt(0).toUpperCase() + word.slice(1);
+      tagsSet.add(formatted);
+    }
+  }
+
+  // 4. Default fallback tag if none found
+  if (tagsSet.size === 0) {
+    tagsSet.add('Education');
+    tagsSet.add('Tutorial');
+  }
+
+  return Array.from(tagsSet).slice(0, 6);
+}
+
+/**
  * Extracts a YouTube playlist ID from list parameter in URLs.
  */
 export function extractYouTubePlaylistId(urlOrId: any): string | null {

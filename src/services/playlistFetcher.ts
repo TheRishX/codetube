@@ -139,7 +139,7 @@ export async function fetchPlaylistMetadata(
   const cleanPlId = playlistId.replace(/^[?&]list=/, '').trim();
   const apiKey = apiKeyOverride || getStoredApiKey();
 
-  // 1. Try Express Backend Service First
+  // 1. Try Express / Vercel Serverless Endpoint First
   try {
     const res = await fetch('/api/youtube/playlist', {
       method: 'POST',
@@ -147,7 +147,8 @@ export async function fetchPlaylistMetadata(
       body: JSON.stringify({ playlistId: cleanPlId, apiKey }),
     });
 
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       if (data.success && data.videos && data.videos.length > 0) {
         return {
@@ -160,7 +161,7 @@ export async function fetchPlaylistMetadata(
       }
     }
   } catch (err) {
-    console.warn('Backend playlist endpoint not reachable, falling back to client proxy engine:', err);
+    console.warn('Backend/Vercel API endpoint not reachable, falling back to client proxy engine:', err);
   }
 
   // 2. Client-side Fallback (Imports existing logic in YouTube lib)

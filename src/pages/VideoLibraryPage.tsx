@@ -8,13 +8,14 @@ import {
   Plus,
   Video,
 } from 'lucide-react';
-import { VideoItem, VideoProgress, CATEGORIES, ViewMode, SortOption, Difficulty, VideoStatus } from '../types';
+import { VideoItem, VideoProgress, Playlist, CATEGORIES, ViewMode, SortOption, Difficulty, VideoStatus } from '../types';
 import { VideoCard } from '../components/VideoCard';
 import { EmptyState } from '../components/EmptyState';
 import { useGlobalPaste } from '../context/GlobalPasteContext';
 
 interface VideoLibraryPageProps {
   videos: VideoItem[];
+  playlists?: Playlist[];
   progressMap: Record<string, VideoProgress>;
   searchQuery: string;
   onSearchChange: (query: string) => void;
@@ -29,6 +30,7 @@ interface VideoLibraryPageProps {
 
 export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
   videos,
+  playlists = [],
   progressMap,
   searchQuery,
   onSearchChange,
@@ -62,17 +64,40 @@ export const VideoLibraryPage: React.FC<VideoLibraryPageProps> = ({
     return latestId;
   }, [videos, progressMap]);
 
+  // Combine standalone videos and playlist videos when searching
+  const allSearchableVideos = useMemo(() => {
+    if (!searchQuery.trim() || !playlists.length) return videos;
+
+    const existingIds = new Set(videos.map((v) => v.id));
+    const combined = [...videos];
+
+    playlists.forEach((pl) => {
+      pl.videos?.forEach((pVid) => {
+        if (!existingIds.has(pVid.id) && !existingIds.has(pVid.youtubeId)) {
+          combined.push({
+            ...pVid,
+            tags: pVid.tags?.length ? pVid.tags : [pVid.category || pl.category, 'Playlist Video'],
+          });
+          existingIds.add(pVid.id);
+        }
+      });
+    });
+
+    return combined;
+  }, [videos, playlists, searchQuery]);
+
   // Filter & Sort Logic
   const filteredVideos = useMemo(() => {
-    return videos
+    return allSearchableVideos
       .filter((v) => {
         // Search
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           const matchTitle = v.title.toLowerCase().includes(q);
           const matchChannel = v.channelName.toLowerCase().includes(q);
+          const matchCategory = v.category.toLowerCase().includes(q);
           const matchTags = v.tags.some((t) => t.toLowerCase().includes(q));
-          if (!matchTitle && !matchChannel && !matchTags) return false;
+          if (!matchTitle && !matchChannel && !matchCategory && !matchTags) return false;
         }
 
         // Category Filter

@@ -371,6 +371,7 @@ export function LearnVerseApp() {
           {currentTab === 'library' && (
             <VideoLibraryPage
               videos={videos}
+              playlists={playlists}
               progressMap={progressMap}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}

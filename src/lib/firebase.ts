@@ -21,6 +21,7 @@ import {
   limit
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { generateAutoTags } from './youtube';
 import {
   VideoItem,
   VideoProgress,
@@ -298,8 +299,13 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
 // Videos
 export async function saveVideoToFirestore(video: Omit<VideoItem, 'createdAt' | 'updatedAt'>): Promise<VideoItem> {
   const now = Date.now();
+  const tags = video.tags && video.tags.length > 0
+    ? video.tags
+    : generateAutoTags(video.title, video.channelName, video.category);
+
   const videoItem: VideoItem = {
     ...video,
+    tags,
     createdAt: now,
     updatedAt: now,
   };
@@ -526,8 +532,28 @@ export const INITIAL_SAMPLE_PLAYLISTS: Playlist[] = [
 
 // Playlists Firestore API
 export async function savePlaylistToFirestore(playlist: Playlist): Promise<Playlist> {
-  await setDoc(doc(db, 'playlists', playlist.id), playlist);
-  return playlist;
+  const plTags = playlist.tags && playlist.tags.length > 0
+    ? playlist.tags
+    : generateAutoTags(playlist.title, playlist.channelName, playlist.category, playlist.description);
+
+  const updatedVideos = (playlist.videos || []).map((v) => {
+    const vTags = v.tags && v.tags.length > 0
+      ? v.tags
+      : generateAutoTags(v.title, v.channelName || playlist.channelName, v.category || playlist.category);
+    return {
+      ...v,
+      tags: Array.from(new Set([...plTags, ...vTags, playlist.category])),
+    };
+  });
+
+  const updatedPlaylist: Playlist = {
+    ...playlist,
+    tags: plTags,
+    videos: updatedVideos,
+  };
+
+  await setDoc(doc(db, 'playlists', playlist.id), updatedPlaylist);
+  return updatedPlaylist;
 }
 
 export async function updatePlaylistInFirestore(id: string, updates: Partial<Playlist>): Promise<void> {

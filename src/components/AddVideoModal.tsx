@@ -6,6 +6,7 @@ import {
   fetchYouTubeMetadata,
   getYouTubeThumbnail,
   detectCategoryFromTitleAndChannel,
+  generateAutoTags,
   YouTubePlaylistMetadata,
 } from '../lib/youtube';
 import {
@@ -83,6 +84,8 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
         setChannelName(meta.channelName);
         const autoCat = detectCategoryFromTitleAndChannel(meta.title, meta.channelName);
         setCategory(autoCat);
+        const autoTags = generateAutoTags(meta.title, meta.channelName, autoCat);
+        setTags(autoTags);
       } catch (err) {
         setTitle(`YouTube Playlist (${plId})`);
         setChannelName('YouTube Channel');
@@ -104,6 +107,8 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
         setChannelName(meta.authorName);
         const autoCat = detectCategoryFromTitleAndChannel(meta.title, meta.authorName);
         setCategory(autoCat);
+        const autoTags = generateAutoTags(meta.title, meta.authorName, autoCat);
+        setTags(autoTags);
       } catch (err) {
         setTitle(`YouTube Video (${vidId})`);
         setChannelName('Unknown Channel');
@@ -150,22 +155,31 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
 
     try {
       if (importMode === 'playlist' && extractedPlaylistId && playlistMeta) {
-        // Save Playlist
-        const playlistVideos: VideoItem[] = playlistMeta.videos.map((v, idx) => ({
-          id: `pvid-${extractedPlaylistId}-${idx}-${Date.now().toString().slice(-4)}`,
-          youtubeId: v.youtubeId,
-          youtubeUrl: `https://www.youtube.com/watch?v=${v.youtubeId}`,
-          title: v.title,
-          thumbnail: v.thumbnailUrl,
-          channelName: v.channelName || channelName || playlistMeta.channelName,
-          duration: v.duration || 0,
-          category,
-          difficulty,
-          tags: tags.length > 0 ? tags : [category, difficulty, 'Playlist'],
-          status: 'not-started',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        }));
+        // Save Playlist with Auto-Generated Tags for each video and the playlist
+        const plAutoTags = tags.length > 0
+          ? tags
+          : generateAutoTags(title.trim() || playlistMeta.title, channelName.trim() || playlistMeta.channelName, category);
+
+        const playlistVideos: VideoItem[] = playlistMeta.videos.map((v, idx) => {
+          const vAutoTags = generateAutoTags(v.title, v.channelName || channelName || playlistMeta.channelName, category);
+          const combinedTags = Array.from(new Set([...plAutoTags, ...vAutoTags, category, 'Playlist']));
+
+          return {
+            id: `pvid-${extractedPlaylistId}-${idx}-${Date.now().toString().slice(-4)}`,
+            youtubeId: v.youtubeId,
+            youtubeUrl: `https://www.youtube.com/watch?v=${v.youtubeId}`,
+            title: v.title,
+            thumbnail: v.thumbnailUrl,
+            channelName: v.channelName || channelName || playlistMeta.channelName,
+            duration: v.duration || 0,
+            category,
+            difficulty,
+            tags: combinedTags,
+            status: 'not-started',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+        });
 
         const newPlaylist: Playlist = {
           id: `pl-${extractedPlaylistId}-${Date.now().toString().slice(-4)}`,
@@ -180,7 +194,8 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
           createdAt: Date.now(),
           updatedAt: Date.now(),
           videos: playlistVideos,
-        };
+          tags: plAutoTags,
+        } as Playlist;
 
         await savePlaylistToFirestore(newPlaylist);
         setSuccessPlaylist(newPlaylist);
@@ -189,18 +204,24 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
         const targetVidId = extractedId || (playlistMeta?.videos?.[0]?.youtubeId) || 'PkZNo7MFNFg';
         const targetThumb = extractedId ? getYouTubeThumbnail(extractedId) : (playlistMeta?.videos?.[0]?.thumbnailUrl || getYouTubeThumbnail(targetVidId));
         const videoId = `vid-${targetVidId}-${Date.now().toString().slice(-4)}`;
+        const finalTitle = title.trim() || `YouTube Video (${targetVidId})`;
+        const finalChannel = channelName.trim() || 'Unknown Channel';
+
+        const finalTags = tags.length > 0
+          ? tags
+          : generateAutoTags(finalTitle, finalChannel, category);
 
         const newVideo = await saveVideoToFirestore({
           id: videoId,
           youtubeId: targetVidId,
           youtubeUrl: `https://www.youtube.com/watch?v=${targetVidId}`,
-          title: title.trim() || `YouTube Video (${targetVidId})`,
+          title: finalTitle,
           thumbnail: targetThumb,
-          channelName: channelName.trim() || 'Unknown Channel',
+          channelName: finalChannel,
           duration: playlistMeta?.videos?.[0]?.duration || 0,
           category,
           difficulty,
-          tags: tags.length > 0 ? tags : [category, difficulty],
+          tags: finalTags,
           status: 'not-started',
         });
 
