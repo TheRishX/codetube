@@ -1,6 +1,6 @@
 {
   "name": "Code Tube",
   "description": "Code Tube - The ultimate Computer Science & IT video learning platform with YouTube bookmarking, study timer, AI tutor, and interactive notes.",
-  "requestFramePermissions": ["camera", "microphone"],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -2,7 +2,6 @@ import React from 'react';
 import { Clock, CheckCircle2, Flame, Trophy, TrendingUp, BarChart2, Layers, PauseCircle, Activity, Sparkles } from 'lucide-react';
 import { VideoItem, VideoProgress, ActivityLog } from '../types';
 import { CATEGORIES } from '../types';
-import { DrowsinessDetector } from './DrowsinessDetector';
 
 interface AnalyticsCardProps {
   videos: VideoItem[];
@@ -151,9 +150,6 @@ export const AnalyticsCard: React.FC<AnalyticsCardProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Sleep & Drowsiness AI Guard Widget */}
-      <DrowsinessDetector />
 
       {/* Weekly Activity & Pause Patterns Chart */}
       <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200/80 dark:border-gray-700/80 shadow-xs space-y-4">
