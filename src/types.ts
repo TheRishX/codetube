@@ -127,6 +127,7 @@ export interface AppLayoutPreferences {
   // Dashboard Sections & Filtering
   showCategoryFilterBar?: boolean;
   showLastPlayedOnDashboard?: boolean;
+  showPlaylistsOnDashboard?: boolean;
   showLibraryOnDashboard?: boolean;
   showDashboardSearch?: boolean;
   showDashboardStatusFilter?: boolean;
@@ -160,6 +161,7 @@ export const DEFAULT_LAYOUT_PREFERENCES: AppLayoutPreferences = {
 
   showCategoryFilterBar: true,
   showLastPlayedOnDashboard: true,
+  showPlaylistsOnDashboard: true,
   showLibraryOnDashboard: true,
   showDashboardSearch: true,
   showDashboardStatusFilter: true,

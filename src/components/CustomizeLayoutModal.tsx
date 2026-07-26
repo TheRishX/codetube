@@ -579,6 +579,19 @@ export const CustomizeLayoutModal: React.FC<CustomizeLayoutModalProps> = ({
 
                   <label className="p-3.5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 bg-white dark:bg-gray-800/90 flex items-center justify-between cursor-pointer hover:border-indigo-500 transition-colors">
                     <div className="flex items-center gap-2.5">
+                      <ListVideo className="w-4 h-4 text-red-500" />
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Playlists & Courses Section</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={localPrefs.showPlaylistsOnDashboard !== false}
+                      onChange={() => toggleBooleanPref('showPlaylistsOnDashboard')}
+                      className="w-4 h-4 accent-indigo-600 rounded-md cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="p-3.5 rounded-2xl border border-gray-200/80 dark:border-gray-700/80 bg-white dark:bg-gray-800/90 flex items-center justify-between cursor-pointer hover:border-indigo-500 transition-colors">
+                    <div className="flex items-center gap-2.5">
                       <LayoutDashboard className="w-4 h-4 text-blue-500" />
                       <span className="text-xs font-bold text-gray-800 dark:text-gray-200">Library Video Grid</span>
                     </div>

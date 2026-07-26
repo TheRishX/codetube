@@ -224,6 +224,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const showCategoryBar = layoutPreferences?.showCategoryFilterBar !== false;
   const showLastPlayed = layoutPreferences?.showLastPlayedOnDashboard !== false;
+  const showPlaylists = layoutPreferences?.showPlaylistsOnDashboard !== false;
   const showLibrary = layoutPreferences?.showLibraryOnDashboard !== false;
   const showSearch = layoutPreferences?.showDashboardSearch !== false;
   const showStatusFilter = layoutPreferences?.showDashboardStatusFilter !== false;
@@ -380,7 +381,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       )}
 
       {/* PLAYLISTS SECTION ON HOMEPAGE */}
-      {filteredPlaylists.length > 0 && (
+      {showPlaylists && filteredPlaylists.length > 0 && (
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -394,12 +395,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => onNavigate('playlists')}
-              className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              View All Playlists →
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => onNavigate('playlists')}
+                className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                View All Playlists →
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -435,42 +438,48 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             {/* Filter controls */}
             <div className="flex items-center gap-2 overflow-x-auto">
               {/* Search input */}
-              <div className="relative min-w-[180px]">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter library..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 outline-hidden"
-                />
-              </div>
+              {showSearch && (
+                <div className="relative min-w-[180px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Filter library..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                  />
+                </div>
+              )}
 
               {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
-              >
-                <option value="all">All Statuses</option>
-                <option value="in-progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="not-started">Not Started</option>
-                <option value="archived">Archived</option>
-              </select>
+              {showStatusFilter && (
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="in-progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="not-started">Not Started</option>
+                  <option value="archived">Archived</option>
+                </select>
+              )}
 
               {/* Sort Selector */}
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
-              >
-                <option value="recent">Recent First</option>
-                <option value="newest">Newest Added</option>
-                <option value="progress">Highest Progress</option>
-                <option value="title">Title (A-Z)</option>
-                <option value="duration">Longest First</option>
-              </select>
+              {showSortBy && (
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 outline-hidden"
+                >
+                  <option value="recent">Recent First</option>
+                  <option value="newest">Newest Added</option>
+                  <option value="progress">Highest Progress</option>
+                  <option value="title">Title (A-Z)</option>
+                  <option value="duration">Longest First</option>
+                </select>
+              )}
 
               {/* Add Video Button */}
               <button
