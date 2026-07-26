@@ -3,7 +3,8 @@ import { PlayCircle, Search, Menu, Flame, Sparkles, Youtube, Sliders } from 'luc
 import { ThemeToggle } from './ThemeToggle';
 import { GlobalPasteVideoAction } from './GlobalPasteVideoAction';
 import { StudySessionTimer } from './StudySessionTimer';
-import { AppLayoutPreferences } from '../types';
+import { StudyNotificationBell } from './StudyNotificationBell';
+import { AppLayoutPreferences, LearningGoal, ActivityLog, VideoItem } from '../types';
 
 interface HeaderProps {
   currentTab: string;
@@ -15,6 +16,9 @@ interface HeaderProps {
   onSearchChange: (query: string) => void;
   streakCount: number;
   preferences?: AppLayoutPreferences;
+  goal?: LearningGoal;
+  activityLogs?: ActivityLog[];
+  videos?: VideoItem[];
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,6 +31,9 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   streakCount,
   preferences,
+  goal,
+  activityLogs,
+  videos,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800/80 transition-colors">
@@ -94,6 +101,19 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Study Session Timer */}
             {preferences?.showHeaderTimer !== false && <StudySessionTimer />}
+
+            {/* Daily Study Notification Bell */}
+            {goal && activityLogs && (
+              <StudyNotificationBell
+                goal={goal}
+                activityLogs={activityLogs}
+                videos={videos || []}
+                onNavigateToWatch={(vId) => {
+                  if (vId) onNavigate(`watch-${vId}`);
+                  else onNavigate('watch');
+                }}
+              />
+            )}
 
             {/* Streak Counter Badge */}
             {preferences?.showHeaderStreak !== false && (

@@ -20,6 +20,7 @@ import { AddVideoModal } from './components/AddVideoModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { GlobalPasteVideoAction } from './components/GlobalPasteVideoAction';
 import { GoalToast } from './components/GoalToast';
+import { DailyTargetReminderToast } from './components/DailyTargetReminderToast';
 import { CustomizeLayoutModal } from './components/CustomizeLayoutModal';
 
 import { DashboardPage } from './pages/DashboardPage';
@@ -307,6 +308,9 @@ export function LearnVerseApp() {
           onSearchChange={setSearchQuery}
           streakCount={streakCount}
           preferences={layoutPreferences}
+          goal={goal}
+          activityLogs={activityLogs}
+          videos={videos}
         />
       )}
 
@@ -488,6 +492,17 @@ export function LearnVerseApp() {
         onClose={() => setIsCustomizerOpen(false)}
         preferences={layoutPreferences}
         onSavePreferences={handleSavePreferences}
+      />
+
+      {/* Daily Target Reminder Toast */}
+      <DailyTargetReminderToast
+        goal={goal}
+        activityLogs={activityLogs}
+        videos={videos}
+        onNavigateToWatch={(vId) => {
+          if (vId) handleNavigate(`watch-${vId}`);
+          else handleNavigate('watch');
+        }}
       />
 
       {/* Daily Learning Goal Celebration Toast */}

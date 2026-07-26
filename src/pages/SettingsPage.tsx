@@ -12,11 +12,16 @@ import {
   HelpCircle,
   Copy,
   Terminal,
+  Bell,
+  Send,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import { LearningGoal } from '../types';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { saveGoalToFirestore, seedInitialDataIfEmpty } from '../lib/firebase';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { sendBrowserPushNotification } from '../components/DailyTargetReminderToast';
 
 interface SettingsPageProps {
   goal: LearningGoal;
@@ -36,6 +41,43 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default'
+  );
+  const [testNotificationSent, setTestNotificationSent] = useState(false);
+
+  const handleRequestPushPermission = async () => {
+    if (!('Notification' in window)) {
+      alert('Browser notifications are not supported by your current browser.');
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        sendBrowserPushNotification('🎯 Daily CS Study Reminders Enabled!', {
+          body: `Target set to ${dailyTargetInput || 30} mins per day. Keep up the learning streak!`,
+        });
+        setTestNotificationSent(true);
+        setTimeout(() => setTestNotificationSent(false), 4000);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestPushInSettings = () => {
+    if (notificationPermission !== 'granted') {
+      handleRequestPushPermission();
+      return;
+    }
+    sendBrowserPushNotification('📚 LearnVerse Daily Goal Test', {
+      body: `Your daily target is ${dailyTargetInput || 30} minutes. Don't forget to complete today's CS study session!`,
+    });
+    setTestNotificationSent(true);
+    setTimeout(() => setTestNotificationSent(false), 4000);
+  };
 
   const handleSaveGoal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +175,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <button
               type="submit"
               disabled={isSavingGoal}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-500/20 transition-all"
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-md shadow-indigo-500/20 transition-all cursor-pointer"
             >
               Save Learning Targets
             </button>
@@ -144,6 +186,55 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             )}
           </div>
         </form>
+      </div>
+
+      {/* Daily Target Push Notification & Toast Settings */}
+      <div className="bg-white dark:bg-gray-800/90 rounded-3xl p-6 border border-gray-200/80 dark:border-gray-700/80 shadow-xs space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-white">
+            <Bell className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            Daily Push Notifications & Reminders
+          </div>
+
+          {notificationPermission === 'granted' ? (
+            <span className="px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1">
+              <ShieldCheck className="w-4 h-4" /> Browser Push Active
+            </span>
+          ) : (
+            <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs font-bold">
+              Permission Required
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          CodeTube sends daily motivational toasts and optional desktop push notifications when you haven't completed your daily target ({dailyTargetInput || 30} mins/day).
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {notificationPermission !== 'granted' ? (
+            <button
+              onClick={handleRequestPushPermission}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Bell className="w-4 h-4" />
+              <span>Enable Desktop Push Notifications</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleTestPushInSettings}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>{testNotificationSent ? 'Test Notification Dispatched!' : 'Send Test Push Notification'}</span>
+            </button>
+          )}
+
+          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 pl-1">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <span>In-App Toast Reminders are automatically active on startup.</span>
+          </div>
+        </div>
       </div>
 
       {/* Appearance Settings */}
