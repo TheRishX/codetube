@@ -5,8 +5,30 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, onSnapshot, doc, getDocs } from 'firebase/firestore';
-import { db, seedInitialDataIfEmpty, deleteVideoFromFirestore, updateVideoInFirestore, savePlaylistToFirestore } from './lib/firebase';
-import { VideoItem, VideoProgress, VideoNote, VideoBookmark, LearningGoal, ActivityLog, Playlist, AppLayoutPreferences, DEFAULT_LAYOUT_PREFERENCES } from './types';
+import {
+  db,
+  seedInitialDataIfEmpty,
+  deleteVideoFromFirestore,
+  updateVideoInFirestore,
+  savePlaylistToFirestore,
+  subscribeToCategoriesFromFirestore,
+  saveCategoryToFirestore,
+  deleteCategoryFromFirestore,
+  renameCategoryInFirestore,
+} from './lib/firebase';
+import {
+  VideoItem,
+  VideoProgress,
+  VideoNote,
+  VideoBookmark,
+  LearningGoal,
+  ActivityLog,
+  Playlist,
+  AppLayoutPreferences,
+  DEFAULT_LAYOUT_PREFERENCES,
+  CategoryInfo,
+  CATEGORIES,
+} from './types';
 
 import { ThemeProvider } from './context/ThemeContext';
 import { GlobalPasteProvider, useGlobalPaste } from './context/GlobalPasteContext';
@@ -20,6 +42,9 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { GlobalPasteVideoAction } from './components/GlobalPasteVideoAction';
 import { GoalToast } from './components/GoalToast';
 import { CustomizeLayoutModal } from './components/CustomizeLayoutModal';
+import { CategoryFormModal } from './components/CategoryFormModal';
+import { CategoryManagerModal } from './components/CategoryManagerModal';
+import { DeleteCategoryModal } from './components/DeleteCategoryModal';
 
 import { DashboardPage } from './pages/DashboardPage';
 import { RecommendationsPage } from './pages/RecommendationsPage';
@@ -59,6 +84,13 @@ export function LearnVerseApp() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [deletingVideo, setDeletingVideo] = useState<VideoItem | null>(null);
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
+
+  // Category State & Modals
+  const [categories, setCategories] = useState<CategoryInfo[]>(CATEGORIES);
+  const [isCategoryFormOpen, setIsCategoryFormOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryInfo | null>(null);
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<CategoryInfo | null>(null);
 
   // Layout Customization & Sidebar collapse state
   const [layoutPreferences, setLayoutPreferences] = useState<AppLayoutPreferences>(() => {
@@ -196,6 +228,11 @@ export function LearnVerseApp() {
       setActivityLogs(lList);
     }, handleSnapshotError);
 
+    // 8. Listener for Custom Categories
+    const unsubCategories = subscribeToCategoriesFromFirestore((catList) => {
+      setCategories(catList);
+    });
+
     return () => {
       unsubVideos();
       unsubPlaylists();
@@ -204,6 +241,7 @@ export function LearnVerseApp() {
       unsubBookmarks();
       unsubGoal();
       unsubLogs();
+      unsubCategories();
     };
   }, []);
 
@@ -281,6 +319,41 @@ export function LearnVerseApp() {
       }
       setDeletingVideo(null);
     }
+  };
+
+  // Category Handlers
+  const handleOpenCreateCategory = () => {
+    setEditingCategory(null);
+    setIsCategoryFormOpen(true);
+  };
+
+  const handleOpenEditCategory = (cat: CategoryInfo) => {
+    setEditingCategory(cat);
+    setIsCategoryFormOpen(true);
+  };
+
+  const handleOpenDeleteCategory = (cat: CategoryInfo) => {
+    setDeletingCategory(cat);
+  };
+
+  const handleSaveCategory = async (cat: CategoryInfo, oldName?: string) => {
+    await saveCategoryToFirestore(cat);
+    if (oldName && oldName !== cat.name) {
+      await renameCategoryInFirestore(oldName, cat.name);
+    }
+    setIsCategoryFormOpen(false);
+    setEditingCategory(null);
+  };
+
+  const handleDeleteCategoryConfirm = async (categoryId: string, reassignCategoryName?: string) => {
+    const catToDelete = categories.find((c) => c.id === categoryId);
+    if (catToDelete) {
+      if (reassignCategoryName) {
+        await renameCategoryInFirestore(catToDelete.name, reassignCategoryName);
+      }
+      await deleteCategoryFromFirestore(categoryId);
+    }
+    setDeletingCategory(null);
   };
 
   const completedCount = videos.filter(
@@ -417,11 +490,16 @@ export function LearnVerseApp() {
           )}
 
           {currentTab === 'categories' && (
-
             <CategoriesPage
+              categories={categories}
               videos={videos}
+              playlists={playlists}
               progressMap={progressMap}
               onSelectCategoryFilter={handleSelectCategoryFilter}
+              onCreateCategory={handleOpenCreateCategory}
+              onEditCategory={handleOpenEditCategory}
+              onDeleteCategory={handleOpenDeleteCategory}
+              onOpenCategoryManager={() => setIsCategoryManagerOpen(true)}
             />
           )}
 
@@ -490,6 +568,7 @@ export function LearnVerseApp() {
       {/* Global Add/Paste Video Modal */}
       <AddVideoModal
         existingVideos={videos}
+        categoriesList={categories}
         onVideoAdded={(v) => handleSelectVideo(v)}
         onSelectVideo={(v) => handleSelectVideo(v)}
       />
@@ -498,6 +577,7 @@ export function LearnVerseApp() {
       <EditVideoModal
         video={editingVideo}
         isOpen={editingVideo !== null}
+        categoriesList={categories}
         onClose={() => setEditingVideo(null)}
         onVideoUpdated={(updatedVid) => {
           setVideos((prev) => prev.map((v) => (v.id === updatedVid.id ? updatedVid : v)));
@@ -517,6 +597,40 @@ export function LearnVerseApp() {
         variant="danger"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingVideo(null)}
+      />
+
+      {/* Category Create/Edit Form Modal */}
+      <CategoryFormModal
+        isOpen={isCategoryFormOpen}
+        initialCategory={editingCategory}
+        onClose={() => {
+          setIsCategoryFormOpen(false);
+          setEditingCategory(null);
+        }}
+        onSave={handleSaveCategory}
+      />
+
+      {/* Category Manager Modal */}
+      <CategoryManagerModal
+        isOpen={isCategoryManagerOpen}
+        categories={categories}
+        videos={videos}
+        playlists={playlists}
+        onClose={() => setIsCategoryManagerOpen(false)}
+        onCreateCategory={handleOpenCreateCategory}
+        onEditCategory={handleOpenEditCategory}
+        onDeleteCategory={handleOpenDeleteCategory}
+      />
+
+      {/* Delete Category Confirmation Modal */}
+      <DeleteCategoryModal
+        isOpen={deletingCategory !== null}
+        category={deletingCategory}
+        categories={categories}
+        videos={videos}
+        playlists={playlists}
+        onClose={() => setDeletingCategory(null)}
+        onConfirmDelete={handleDeleteCategoryConfirm}
       />
 
       {/* Modular Layout & Customizer Modal */}

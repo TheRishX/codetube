@@ -76,6 +76,8 @@ export interface CategoryInfo {
   description: string;
   iconName: string;
   color: string;
+  isCustom?: boolean;
+  order?: number;
 }
 
 export interface Playlist {
@@ -87,6 +89,7 @@ export interface Playlist {
   channelName: string;
   category: string;
   difficulty: Difficulty;
+  tags?: string[];
   totalVideos: number;
   videos: VideoItem[];
   lastPlayedVideoId?: string;

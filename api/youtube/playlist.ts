@@ -8,6 +8,89 @@ function parseISO8601Duration(isoDuration: string): number {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
+function parseDurationText(durationStr: string): number {
+  if (!durationStr) return 0;
+  const parts = durationStr.split(':').map((p) => parseInt(p, 10));
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+/**
+ * Extracts videos from YouTube's ytInitialData JSON structure embedded in playlist HTML pages.
+ */
+function extractVideosFromYtInitialData(ytData: any, defaultChannelName: string) {
+  const videos: { youtubeId: string; title: string; channelName: string; thumbnailUrl: string; duration: number }[] = [];
+  try {
+    const tabs = ytData?.contents?.twoColumnBrowseResultsRenderer?.tabs;
+    if (!tabs || !Array.isArray(tabs)) return videos;
+
+    let videoListRenderer: any = null;
+
+    for (const tab of tabs) {
+      const sectionList = tab?.tabRenderer?.content?.sectionListRenderer?.contents;
+      if (sectionList && Array.isArray(sectionList)) {
+        for (const sec of sectionList) {
+          const itemSection = sec?.itemSectionRenderer?.contents;
+          if (itemSection && Array.isArray(itemSection)) {
+            for (const item of itemSection) {
+              if (item?.playlistVideoListRenderer) {
+                videoListRenderer = item.playlistVideoListRenderer;
+                break;
+              }
+            }
+          }
+          if (videoListRenderer) break;
+        }
+      }
+      if (videoListRenderer) break;
+    }
+
+    const rawContents = videoListRenderer?.contents || [];
+
+    for (const item of rawContents) {
+      const renderer = item?.playlistVideoRenderer;
+      if (!renderer || !renderer.videoId) continue;
+
+      const vId = renderer.videoId;
+      const vTitle = renderer.title?.runs?.[0]?.text || renderer.title?.simpleText || `Video ${vId}`;
+      
+      // Skip deleted or private videos
+      if (vTitle === '[Private video]' || vTitle === '[Deleted video]') continue;
+
+      const vAuthor =
+        renderer.shortBylineText?.runs?.[0]?.text ||
+        renderer.longBylineText?.runs?.[0]?.text ||
+        defaultChannelName;
+
+      const vThumb =
+        renderer.thumbnail?.thumbnails?.[renderer.thumbnail.thumbnails.length - 1]?.url ||
+        `https://img.youtube.com/vi/${vId}/hqdefault.jpg`;
+
+      const lengthSec = parseInt(renderer.lengthSeconds || '0', 10);
+      const lengthText = renderer.lengthText?.simpleText || '';
+      const parsedSec = lengthSec > 0 ? lengthSec : parseDurationText(lengthText);
+
+      videos.push({
+        youtubeId: vId,
+        title: vTitle,
+        channelName: vAuthor,
+        thumbnailUrl: vThumb,
+        duration: parsedSec,
+      });
+    }
+  } catch (err) {
+    console.warn('Error parsing ytInitialData:', err);
+  }
+
+  return videos;
+}
+
 export default async function handler(req: any, res: any) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -39,7 +122,7 @@ export default async function handler(req: any, res: any) {
     let videos: { youtubeId: string; title: string; channelName: string; thumbnailUrl: string; duration: number }[] = [];
     let fetchSource = 'none';
 
-    // Strategy 1: Official YouTube Data API v3 if API key is present
+    // STRATEGY 1: Official YouTube Data API v3 if API key is present
     if (apiKey) {
       try {
         const plUrl = `https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&id=${cleanPlId}&key=${apiKey}`;
@@ -50,7 +133,11 @@ export default async function handler(req: any, res: any) {
             const item = plData.items[0];
             title = item.snippet?.title || title;
             channelName = item.snippet?.channelTitle || channelName;
-            thumbnailUrl = item.snippet?.thumbnails?.maxres?.url || item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || thumbnailUrl;
+            thumbnailUrl =
+              item.snippet?.thumbnails?.maxres?.url ||
+              item.snippet?.thumbnails?.high?.url ||
+              item.snippet?.thumbnails?.medium?.url ||
+              thumbnailUrl;
           }
         }
 
@@ -67,7 +154,10 @@ export default async function handler(req: any, res: any) {
               const vId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
               const vTitle = item.snippet?.title;
               if (vId && vTitle && vTitle !== 'Private video' && vTitle !== 'Deleted video') {
-                const vThumb = item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || `https://img.youtube.com/vi/${vId}/hqdefault.jpg`;
+                const vThumb =
+                  item.snippet?.thumbnails?.high?.url ||
+                  item.snippet?.thumbnails?.medium?.url ||
+                  `https://img.youtube.com/vi/${vId}/hqdefault.jpg`;
                 const vAuthor = item.snippet?.videoOwnerChannelTitle || item.snippet?.channelTitle || channelName;
                 apiVideos.push({
                   youtubeId: vId,
@@ -111,17 +201,114 @@ export default async function handler(req: any, res: any) {
           }
         }
       } catch (err) {
-        console.warn('Vercel API v3 fetch failed, falling back to RSS:', err);
+        console.warn('Vercel API v3 fetch failed, falling back to scrapers:', err);
       }
     }
 
-    // Strategy 2: Server-side YouTube RSS Feed XML parsing
+    // STRATEGY 2: Direct YouTube Playlist Webpage HTML Scraper (Extracts ytInitialData JSON)
+    if (videos.length === 0) {
+      try {
+        const webpageUrl = `https://www.youtube.com/playlist?list=${cleanPlId}`;
+        const htmlRes = await fetch(webpageUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+        });
+
+        if (htmlRes.ok) {
+          const htmlText = await htmlRes.text();
+
+          // Extract Page Title
+          const titleMatch = htmlText.match(/<meta property="og:title" content="([^"]+)">/) || htmlText.match(/<title>([^<]+)<\/title>/);
+          if (titleMatch && titleMatch[1]) {
+            title = titleMatch[1].replace('- YouTube', '').trim();
+          }
+
+          // Extract Channel Name
+          const authorMatch = htmlText.match(/<link itemprop="name" content="([^"]+)">/) || htmlText.match(/"author":"([^"]+)"/);
+          if (authorMatch && authorMatch[1]) {
+            channelName = authorMatch[1].trim();
+          }
+
+          // Extract ytInitialData object
+          const ytDataMatch = htmlText.match(/var ytInitialData = ({.*?});<\/script>/s) || htmlText.match(/window\["ytInitialData"\] = ({.*?});/s);
+          if (ytDataMatch && ytDataMatch[1]) {
+            const ytData = JSON.parse(ytDataMatch[1]);
+            const scrapedVideos = extractVideosFromYtInitialData(ytData, channelName);
+            if (scrapedVideos.length > 0) {
+              videos = scrapedVideos;
+              fetchSource = 'youtube_webpage_scrape';
+              thumbnailUrl = videos[0]?.thumbnailUrl || thumbnailUrl;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Vercel YouTube webpage HTML scrape failed:', err);
+      }
+    }
+
+    // STRATEGY 3: Piped and Invidious API Endpoints (Full Playlist API)
+    if (videos.length === 0) {
+      const publicEndpoints = [
+        { url: `https://pipedapi.kavin.rocks/playlists/${cleanPlId}`, type: 'piped' },
+        { url: `https://api.piped.video/playlists/${cleanPlId}`, type: 'piped' },
+        { url: `https://pipedapi.mha.fi/playlists/${cleanPlId}`, type: 'piped' },
+        { url: `https://inv.tux.pizza/api/v1/playlists/${cleanPlId}`, type: 'invidious' },
+        { url: `https://invidious.nerdvpn.de/api/v1/playlists/${cleanPlId}`, type: 'invidious' },
+      ];
+
+      for (const endpoint of publicEndpoints) {
+        try {
+          const pRes = await fetch(endpoint.url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+          });
+
+          if (pRes.ok) {
+            const data = await pRes.json();
+            title = data.title || title;
+            channelName = data.uploader || data.author || channelName;
+
+            let rawList: any[] = [];
+            if (endpoint.type === 'piped') {
+              rawList = data.relatedStreams || data.videos || [];
+            } else if (endpoint.type === 'invidious') {
+              rawList = data.videos || [];
+            }
+
+            if (Array.isArray(rawList) && rawList.length > 0) {
+              videos = rawList.map((v: any) => {
+                const vidId = v.videoId || (v.url || '').replace('/watch?v=', '');
+                return {
+                  youtubeId: vidId,
+                  title: v.title || 'Untitled Video',
+                  channelName: v.uploaderName || v.author || channelName,
+                  thumbnailUrl: v.thumbnail || v.thumbnailUrl || `https://img.youtube.com/vi/${vidId}/hqdefault.jpg`,
+                  duration: v.duration || v.lengthSeconds || 0,
+                };
+              });
+
+              fetchSource = endpoint.type;
+              thumbnailUrl = videos[0]?.thumbnailUrl || thumbnailUrl;
+              break;
+            }
+          }
+        } catch (e) {
+          // Try next public endpoint
+        }
+      }
+    }
+
+    // STRATEGY 4: YouTube RSS Feed XML (Last resort fallback, max 15 items)
     if (videos.length === 0) {
       try {
         const rssUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${cleanPlId}`;
         const rssRes = await fetch(rssUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           },
         });
 
@@ -165,42 +352,6 @@ export default async function handler(req: any, res: any) {
         }
       } catch (err) {
         console.warn('Vercel RSS fetch failed:', err);
-      }
-    }
-
-    // Strategy 3: Piped mirror fallback
-    if (videos.length === 0) {
-      const pipedInstances = [
-        `https://pipedapi.kavin.rocks/playlists/${cleanPlId}`,
-        `https://api.piped.video/playlists/${cleanPlId}`,
-      ];
-
-      for (const instanceUrl of pipedInstances) {
-        try {
-          const pRes = await fetch(instanceUrl);
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            title = pData.title || title;
-            channelName = pData.uploader || channelName;
-            if (pData.relatedStreams && Array.isArray(pData.relatedStreams)) {
-              videos = pData.relatedStreams.map((v: any) => {
-                const vidId = (v.url || '').replace('/watch?v=', '');
-                return {
-                  youtubeId: vidId,
-                  title: v.title || 'Untitled Lesson',
-                  channelName: v.uploaderName || channelName,
-                  thumbnailUrl: v.thumbnail || `https://img.youtube.com/vi/${vidId}/hqdefault.jpg`,
-                  duration: v.duration || 0,
-                };
-              });
-              fetchSource = 'piped_api';
-              thumbnailUrl = videos[0]?.thumbnailUrl || thumbnailUrl;
-              break;
-            }
-          }
-        } catch (e) {
-          // try next
-        }
       }
     }
 

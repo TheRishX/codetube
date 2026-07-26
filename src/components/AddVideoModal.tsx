@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Youtube, Check, AlertCircle, Loader2, Tag, Layers, BarChart, Sparkles, X, ListVideo, Video } from 'lucide-react';
 import { useGlobalPaste } from '../context/GlobalPasteContext';
-import { CATEGORIES, Difficulty, VideoItem, Playlist } from '../types';
+import { CATEGORIES, CategoryInfo, Difficulty, VideoItem, Playlist } from '../types';
 import {
   fetchYouTubeMetadata,
   getYouTubeThumbnail,
@@ -18,11 +18,13 @@ import { saveVideoToFirestore, savePlaylistToFirestore } from '../lib/firebase';
 
 interface AddVideoModalProps {
   existingVideos?: VideoItem[];
+  categoriesList?: CategoryInfo[];
   onVideoAdded?: (video: VideoItem) => void;
   onSelectVideo?: (video: VideoItem) => void;
 }
 
-export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [], onVideoAdded, onSelectVideo }) => {
+export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [], categoriesList, onVideoAdded, onSelectVideo }) => {
+  const activeCategories = categoriesList && categoriesList.length > 0 ? categoriesList : CATEGORIES;
   const { isModalOpen, pastedUrl, closeAddVideoModal: closeModal } = useGlobalPaste();
 
   const [urlInput, setUrlInput] = useState('');
@@ -540,7 +542,7 @@ export const AddVideoModal: React.FC<AddVideoModalProps> = ({ existingVideos = [
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
                 >
-                  {CATEGORIES.map((cat) => (
+                  {activeCategories.map((cat) => (
                     <option key={cat.id} value={cat.name}>
                       {cat.name}
                     </option>

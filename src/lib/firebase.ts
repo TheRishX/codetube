@@ -30,6 +30,8 @@ import {
   LearningGoal,
   ActivityLog,
   Playlist,
+  CategoryInfo,
+  CATEGORIES,
 } from '../types';
 
 
@@ -573,3 +575,96 @@ export async function deletePlaylistFromFirestore(id: string): Promise<void> {
 export async function saveGoalToFirestore(goal: LearningGoal): Promise<void> {
   await setDoc(doc(db, 'learningGoals', goal.id), goal);
 }
+
+// ----------------------------------------------------------------------
+// Custom Categories Firestore API & Synchronization
+// ----------------------------------------------------------------------
+
+export function subscribeToCategoriesFromFirestore(callback: (categories: CategoryInfo[]) => void): () => void {
+  const q = collection(db, 'categories');
+  
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const customCats: CategoryInfo[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as CategoryInfo;
+        customCats.push({ ...data, id: docSnap.id, isCustom: data.isCustom ?? true });
+      });
+
+      // Merge custom categories with default CATEGORIES
+      // If a custom category has the same ID or name as a default category, custom overrides it
+      const mergedMap = new Map<string, CategoryInfo>();
+      
+      // First populate defaults
+      CATEGORIES.forEach((cat) => {
+        mergedMap.set(cat.id, { ...cat, isCustom: false });
+      });
+
+      // Then layer on custom categories
+      customCats.forEach((cat) => {
+        mergedMap.set(cat.id, cat);
+      });
+
+      const mergedList = Array.from(mergedMap.values());
+      // Sort by order if present, or keep insertion order
+      mergedList.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+
+      callback(mergedList);
+    },
+    (err) => {
+      console.warn('Error listening to categories in Firestore, using default CATEGORIES:', err);
+      callback(CATEGORIES);
+    }
+  );
+}
+
+export async function saveCategoryToFirestore(category: CategoryInfo): Promise<CategoryInfo> {
+  const catId = category.id || category.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const newCat: CategoryInfo = {
+    ...category,
+    id: catId,
+    isCustom: category.isCustom ?? true,
+  };
+
+  await setDoc(doc(db, 'categories', catId), newCat);
+  return newCat;
+}
+
+export async function updateCategoryInFirestore(id: string, updates: Partial<CategoryInfo>): Promise<void> {
+  const catRef = doc(db, 'categories', id);
+  await setDoc(catRef, updates, { merge: true });
+}
+
+export async function deleteCategoryFromFirestore(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'categories', id));
+}
+
+export async function renameCategoryInFirestore(oldName: string, newName: string): Promise<void> {
+  if (!oldName || !newName || oldName === newName) return;
+
+  // 1. Update videos with old category name
+  try {
+    const vQuery = query(collection(db, 'videos'), where('category', '==', oldName));
+    const vSnap = await getDocs(vQuery);
+    const vPromises = vSnap.docs.map((docSnap) =>
+      updateDoc(doc(db, 'videos', docSnap.id), { category: newName, updatedAt: Date.now() })
+    );
+    await Promise.all(vPromises);
+  } catch (err) {
+    console.warn('Error updating video categories:', err);
+  }
+
+  // 2. Update playlists with old category name
+  try {
+    const plQuery = query(collection(db, 'playlists'), where('category', '==', oldName));
+    const plSnap = await getDocs(plQuery);
+    const plPromises = plSnap.docs.map((docSnap) =>
+      updateDoc(doc(db, 'playlists', docSnap.id), { category: newName, updatedAt: Date.now() })
+    );
+    await Promise.all(plPromises);
+  } catch (err) {
+    console.warn('Error updating playlist categories:', err);
+  }
+}
+

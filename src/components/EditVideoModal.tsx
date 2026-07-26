@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Edit3, Check, AlertCircle, Loader2, Tag, Layers, X, Trash2 } from 'lucide-react';
-import { CATEGORIES, Difficulty, VideoItem, VideoStatus } from '../types';
+import { CATEGORIES, CategoryInfo, Difficulty, VideoItem, VideoStatus } from '../types';
 import { parseDurationToSeconds, formatDuration } from '../lib/youtube';
 import { updateVideoInFirestore, deleteVideoFromFirestore } from '../lib/firebase';
 
 interface EditVideoModalProps {
   video: VideoItem | null;
   isOpen: boolean;
+  categoriesList?: CategoryInfo[];
   onClose: () => void;
   onVideoUpdated: (updatedVideo: VideoItem) => void;
   onVideoDeleted: (videoId: string) => void;
@@ -15,10 +16,12 @@ interface EditVideoModalProps {
 export const EditVideoModal: React.FC<EditVideoModalProps> = ({
   video,
   isOpen,
+  categoriesList,
   onClose,
   onVideoUpdated,
   onVideoDeleted,
 }) => {
+  const activeCategories = categoriesList && categoriesList.length > 0 ? categoriesList : CATEGORIES;
   const [title, setTitle] = useState('');
   const [channelName, setChannelName] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0].name);
@@ -195,7 +198,7 @@ export const EditVideoModal: React.FC<EditVideoModalProps> = ({
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-hidden"
               >
-                {CATEGORIES.map((cat) => (
+                {activeCategories.map((cat) => (
                   <option key={cat.id} value={cat.name}>
                     {cat.name}
                   </option>

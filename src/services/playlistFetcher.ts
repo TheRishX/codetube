@@ -151,13 +151,31 @@ export async function fetchPlaylistMetadata(
     if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       if (data.success && data.videos && data.videos.length > 0) {
-        return {
+        const serverResult: YouTubePlaylistMetadata = {
           playlistId: cleanPlId,
           title: data.title || `YouTube Playlist (${cleanPlId})`,
           channelName: data.channelName || 'YouTube Learning',
           thumbnailUrl: data.thumbnailUrl || data.videos[0]?.thumbnailUrl || `https://img.youtube.com/vi/${data.videos[0]?.youtubeId}/hqdefault.jpg`,
           videos: data.videos,
         };
+
+        // If server returned a full playlist (> 15 videos) or used official API, return it directly
+        if (data.videos.length > 15 || data.source === 'youtube_data_api_v3') {
+          return serverResult;
+        }
+
+        // If server returned <= 15 items (e.g. RSS fallback), check if client-side proxies can fetch more
+        try {
+          const { fetchYouTubePlaylistMetadata } = await import('../lib/youtube');
+          const clientResult = await fetchYouTubePlaylistMetadata(cleanPlId);
+          if (clientResult.videos && clientResult.videos.length > serverResult.videos.length) {
+            return clientResult;
+          }
+        } catch (clientErr) {
+          // ignore
+        }
+
+        return serverResult;
       }
     }
   } catch (err) {
